@@ -1,3 +1,231 @@
+## ReKep deploys in ManiSkill guidance
+
+1. pip install pinocchio in anaconda environment (your_conda_env/lib/python3.10/site-packages/sapien/warpper/pinocchio_model.py {If you did'n install pinocchio, this script will use pre-build pinocchio dynamic lib and we cannot edit it or need to re-build pinocchio})
+
+2. Change compute_inverse_kinematics function in your_conda_env/lib/python3.10/site-packages/sapien/warpper/pinocchio_model.py
+
+   ```python
+   def compute_inverse_kinematics(
+               self,
+               link_index,
+               pose,
+               initial_qpos=None,
+               active_qmask=None,
+               eps=1e-4,
+               max_iterations=1000,
+               dt=0.1,
+               damp=1e-6,
+               iter_flag=False
+           ):
+               """
+               Compute inverse kinematics with CLIK algorithm.
+               Details see https://gepettoweb.laas.fr/doc/stack-of-tasks/pinocchio/master/doxygen-html/md_doc_b-examples_i-inverse-kinematics.html
+               Also see bug fix from https://github.com/stack-of-tasks/pinocchio/pull/1963/files
+               Args:
+                   link_index: index of the link
+                   pose: target pose of the link in articulation base frame
+                   initial_qpos: initial qpos to start CLIK
+                   active_qmask: dof sized integer array, 1 to indicate active joints and 0 for inactive joints, default to all 1s
+                   max_iterations: number of iterations steps
+                   dt: iteration step "speed"
+                   damp: iteration step "damping"
+               Returns:
+                   result: qpos from IK
+                   success: whether IK is successful
+                   error: se3 norm error
+               """
+               assert 0 <= link_index < len(self.link_id_to_frame_index)
+               if initial_qpos is None:
+                   q = pinocchio.neutral(self.model)
+               else:
+                   q = self.q_s2p(initial_qpos)
+   
+               if active_qmask is None:
+                   mask = np.ones(self.model.nv)
+               else:
+                   mask = np.array(active_qmask)[self.index_p2s]
+   
+               mask = np.diag(mask)
+   
+               frame = int(self.link_id_to_frame_index[link_index])
+               joint = self.model.frames[frame].parent
+   
+               T = pose.to_transformation_matrix()
+               l2w = pinocchio.SE3()
+               l2w.translation[:] = T[:3, 3]
+               l2w.rotation[:] = T[:3, :3]
+   
+               l2j = self.model.frames[frame].placement
+               oMdes = l2w * l2j.inverse()
+   
+               best_error = 1e10
+               best_q = np.array(q)
+               
+               iter = -1
+   
+               for i in range(max_iterations):
+                   pinocchio.forwardKinematics(self.model, self.data, q)
+                   iMd = self.data.oMi[joint].actInv(oMdes)
+                   err = pinocchio.log6(iMd).vector
+                   err_norm = np.linalg.norm(err)
+                   if err_norm < best_error:
+                       best_error = err_norm
+                       best_q = q
+   
+                   if err_norm < eps:
+                       iter = i + 1
+                       success = True
+                       break
+   
+                   J = pinocchio.computeJointJacobian(self.model, self.data, q, joint)
+                   Jlog = pinocchio.Jlog6(iMd.inverse())
+                   J = -Jlog @ J
+                   J = J @ mask
+   
+                   JJt = J @ J.T
+                   JJt[np.diag_indices_from(JJt)] += damp
+   
+                   v = -(J.T @ np.linalg.solve(JJt, err))
+                   q = pinocchio.integrate(self.model, q, v * dt)
+               else:
+                   success = False
+               if iter_flag:
+                   return self.q_p2s(best_q), success, best_error, iter
+               else:
+                   return self.q_p2s(best_q), success, best_error
+   ```
+
+3. Change compute_ik function in you_conda_env/lib/python3.10/site-packages/mani_skill/agents/controllers/utils/kinematics.py (line 124)
+
+   ```python
+   def compute_ik(
+           self,
+           target_pose: Pose,
+           q0: torch.Tensor,
+           pos_only: bool = False,
+           action=None,
+           use_delta_ik_solver: bool = False,
+           iter_flag=False
+       ):
+           """Given a target pose, via inverse kinematics compute the target joint positions that will achieve the target pose
+   
+           Args:
+               target_pose (Pose): target pose of the end effector in the world frame. note this is not relative to the robot base frame!
+               q0 (torch.Tensor): initial joint positions of every active joint in the articulation
+               pos_only (bool): if True, only the position of the end link is considered in the IK computation
+               action (torch.Tensor): delta action to be applied to the articulation. Used for fast delta IK solutions on the GPU.
+               use_delta_ik_solver (bool): If true, returns the target joint positions that correspond with a delta IK solution. This is specifically
+                   used for GPU simulation to determine which GPU IK algorithm to use.
+           """
+           if self.use_gpu_ik:
+               q0 = q0[:, self.active_ancestor_joint_idxs]
+               if not use_delta_ik_solver:
+                   tf = pk.Transform3d(
+                       pos=target_pose.p,
+                       rot=target_pose.q,
+                       device=self.device,
+                   )
+                   self.pik.initial_config = q0  # shape (num_retries, active_ancestor_dof)
+                   result = self.pik.solve(
+                       tf
+                   )  # produce solutions in shape (B, num_retries/initial_configs, active_ancestor_dof)
+                   # TODO return mask for invalid solutions. CPU returns None at the moment
+                   return result.solutions[:, 0, :]
+               else:
+                   jacobian = self.pk_chain.jacobian(q0)
+                   # code commented out below is the fast kinematics method
+                   # jacobian = (
+                   #     self.fast_kinematics_model.jacobian_mixed_frame_pytorch(
+                   #         self.articulation.get_qpos()[:, self.active_ancestor_joint_idxs]
+                   #     )
+                   #     .view(-1, len(self.active_ancestor_joints), 6)
+                   #     .permute(0, 2, 1)
+                   # )
+                   # jacobian = jacobian[:, :, self.qmask]
+                   if pos_only:
+                       jacobian = jacobian[:, 0:3]
+   
+                   # NOTE (stao): this method of IK is from https://mathweb.ucsd.edu/~sbuss/ResearchWeb/ikmethods/iksurvey.pdf by Samuel R. Buss
+                   delta_joint_pos = torch.linalg.pinv(jacobian) @ action.unsqueeze(-1)
+                   return q0 + delta_joint_pos.squeeze(-1)
+           else:
+               if iter_flag:
+                   result, success, error, iter = self.pmodel.compute_inverse_kinematics(
+                       self.end_link_idx,
+                       target_pose.sp,
+                       initial_qpos=q0.cpu().numpy()[0],
+                       active_qmask=self.qmask,
+                       max_iterations=100,
+                       iter_flag=iter_flag
+                   )
+               else:
+                   result, success, error = self.pmodel.compute_inverse_kinematics(
+                       self.end_link_idx,
+                       target_pose.sp,
+                       initial_qpos=q0.cpu().numpy()[0],
+                       active_qmask=self.qmask,
+                       max_iterations=100,
+                   )
+               if success:
+                   if not iter_flag:
+                       return common.to_tensor(
+                           [result[self.active_ancestor_joint_idxs]], device=self.device
+                       )
+                   else:
+                       return [common.to_tensor(
+                           [result[self.active_ancestor_joint_idxs]], device=self.device
+                       ), iter, error]
+               else:
+                   return None
+   ```
+
+4. Add solve function in you_conda_env/lib/python3.10/site-packages/mani_skill/agents/controllers/pd_ee_pose.py
+
+```
+def solve(self, action: Array, iter_flag=False):
+        action = self._preprocess_action(action)
+        self._step = 0
+        self._start_qpos = self.qpos
+
+        if self.config.use_target:
+            prev_ee_pose_at_base = self._target_pose
+        else:
+            prev_ee_pose_at_base = self.ee_pose_at_base
+        self._target_pose = self.compute_target_pose(prev_ee_pose_at_base, action)
+        pos_only = type(self.config) == PDEEPosControllerConfig
+        result = self.kinematics.compute_ik(
+            self._target_pose,
+            self.articulation.get_qpos(),
+            pos_only=pos_only,
+            action=action,
+            use_delta_ik_solver=self.config.use_delta and not self.config.use_target,
+            iter_flag=iter_flag
+        )
+
+        iter = None
+        error = None
+        if iter_flag:
+            if result is not None:
+                self._target_qpos = result[0]
+                iter = result[1]
+                error = result[2]
+            else:
+                self._target_qpos = None
+        else:
+            self._target_qpos = None
+
+        if self._target_qpos is None:
+            self._target_qpos = self._start_qpos
+        if self.config.interpolate:
+            self._step_size = (self._target_qpos - self._start_qpos) / self._sim_steps
+        else:
+            self.set_drive_targets(self._target_qpos)
+        
+        return iter, error, self._target_qpos
+```
+
+
+
 ## ReKep: Spatio-Temporal Reasoning of Relational Keypoint Constraints for Robotic Manipulation
 
 #### [[Project Page]](https://rekep-robot.github.io/) [[Paper]](https://rekep-robot.github.io/rekep.pdf) [[Video]](https://youtu.be/2S8YhBdLdww)
