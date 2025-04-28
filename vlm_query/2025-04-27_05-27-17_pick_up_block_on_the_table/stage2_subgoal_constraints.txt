@@ -1,0 +1,7 @@
+def stage2_subgoal_constraint1(end_effector, keypoints):
+    """Lift the block at least 10cm above its original position."""
+    block_keypoint = keypoints[0]
+    desired_height = block_keypoint[2] + 0.10  # 10 cm above
+    cost = max(0, desired_height - end_effector[2])
+    return cost
+

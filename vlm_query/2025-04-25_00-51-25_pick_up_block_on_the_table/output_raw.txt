@@ -1,0 +1,23 @@
+```python
+# The task is "pick up block on the table".
+# From the image, keypoint 0 appears to be the block on the table (lowest block).
+# The task involves only 1 stage: "grasp block on the table".
+# Since grasping must be an independent stage, and the task ends after picking up the block, we only need this one stage.
+# The sub-goal is to align the end-effector with the block (keypoint 0).
+# No path constraints are needed for grasping.
+
+num_stages = 1
+
+### stage 1 sub-goal constraints (grasp block on the table)
+def stage1_subgoal_constraint1(end_effector, keypoints):
+    """Align the end-effector with the block on the table (keypoint 0)."""
+    block_pos = keypoints[0]
+    cost = np.linalg.norm(end_effector - block_pos)
+    return cost
+
+### stage 1 path constraints
+# No path constraints needed for grasping.
+
+grasp_keypoints = [0]
+release_keypoints = [-1]
+```

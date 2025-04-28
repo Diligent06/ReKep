@@ -1,0 +1,54 @@
+```python
+# Explanation:
+# The task is "pick up block on the table".
+# This involves:
+# 1. Grasping the block (grasping must be an independent stage).
+# 2. Lifting the block up from the table.
+# Therefore, there are 2 stages:
+# - Stage 1: Grasp the block.
+# - Stage 2: Lift the block up.
+
+num_stages = 2
+
+### stage 1 sub-goal constraints (grasping)
+def stage1_subgoal_constraint1(end_effector, keypoints):
+    """Align the end-effector with the block to be picked up (keypoint 0)."""
+    block_keypoint = keypoints[0]
+    cost = np.linalg.norm(end_effector - block_keypoint)
+    return cost
+
+### stage 1 path constraints
+# No path constraints needed during grasping.
+
+### stage 2 sub-goal constraints (lifting)
+def stage2_subgoal_constraint1(end_effector, keypoints):
+    """Lift the block at least 10cm above its original position."""
+    block_keypoint = keypoints[0]
+    desired_height = block_keypoint[2] + 0.10  # 10 cm above
+    cost = max(0, desired_height - end_effector[2])
+    return cost
+
+### stage 2 path constraints
+def stage2_path_constraint1(end_effector, keypoints):
+    """Ensure the robot is still grasping the block during lifting."""
+    return get_grasping_cost_by_keypoint_idx(0)
+
+"""
+Summarize keypoints to be grasped in all grasping stages.
+The length of the list should be equal to the number of stages.
+For grasping stage, write the keypoint index. For non-grasping stage, write -1.
+"""
+grasp_keypoints = [0, -1]
+
+"""
+Summarize at **the end of which stage** the robot should release the keypoints.
+The keypoint indices must appear in an earlier stage as defined in `grasp_keypoints`.
+Only release object when it's necessary to complete the task.
+"""
+release_keypoints = [-1, -1]
+``` 
+
+---
+✅ In this case, the robot does not need to release the block after lifting — it just needs to pick it up.  
+✅ Grasping is separated into its own stage.  
+✅ Constraints are simple and directly related to the task.

@@ -1,0 +1,6 @@
+def stage2_subgoal_constraint1(end_effector, keypoints):
+    """Lift the block (keypoint 0) 10cm above its original position."""
+    lifted_position = keypoints[0] + np.array([0, 0, 0.10])  # 10cm above
+    cost = np.linalg.norm(keypoints[0] - lifted_position)
+    return cost
+

@@ -1,0 +1,35 @@
+```python
+# The task is "pick up block on the table".
+# From the image, keypoint 0 is the lowest and appears to be on the table.
+# Therefore, the task involves:
+# 1. Grasping the block on the table (keypoint 0)
+# 2. Lifting the block off the table
+
+num_stages = 2
+
+### stage 1 sub-goal constraints (grasp block on the table)
+def stage1_subgoal_constraint1(end_effector, keypoints):
+    """Align the end-effector with the block on the table (keypoint 0)."""
+    target = keypoints[0]
+    cost = np.linalg.norm(end_effector - target)
+    return cost
+
+### stage 1 path constraints
+# No path constraints needed for grasping stage
+
+### stage 2 sub-goal constraints (lift the block)
+def stage2_subgoal_constraint1(end_effector, keypoints):
+    """The block (keypoint 0) should be lifted 10cm above its original position."""
+    original_pos = keypoints[0]
+    offsetted_point = original_pos + np.array([0, 0, 0.10])
+    cost = np.linalg.norm(keypoints[0] - offsetted_point)
+    return cost
+
+### stage 2 path constraints
+def stage2_path_constraint1(end_effector, keypoints):
+    """The robot must still be grasping the block (keypoint 0)."""
+    return get_grasping_cost_by_keypoint_idx(0)
+
+grasp_keypoints = [0, -1]
+release_keypoints = [-1, -1]
+```

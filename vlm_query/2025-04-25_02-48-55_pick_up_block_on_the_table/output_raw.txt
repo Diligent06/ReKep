@@ -1,0 +1,21 @@
+```python
+# The task is "pick up block on the table".
+# This task involves only 1 stage: grasping the block on the table.
+# Since the robot is only required to pick up the block (not move or place it), the only necessary stage is to grasp the block.
+# From the image, keypoint 0 appears to be on the block that is on the table surface.
+
+num_stages = 1
+
+### stage 1 sub-goal constraints (grasp block on the table)
+def stage1_subgoal_constraint1(end_effector, keypoints):
+    """Align the end-effector with the block on the table (keypoint 0)."""
+    target_point = keypoints[0]
+    cost = np.linalg.norm(end_effector - target_point)
+    return cost
+
+### stage 1 path constraints
+# No path constraints are needed for grasping stage.
+
+grasp_keypoints = [0]
+release_keypoints = [-1]
+```
