@@ -274,30 +274,16 @@ class Main():
     def _execute_release_action(self):
         self.env.open_gripper()
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--task', type=str, default='pen', help='task to perform')
-    parser.add_argument('--use_cached_query', action='store_true', help='instead of querying the VLM, use the cached query')
-    parser.add_argument('--apply_disturbance', action='store_true', help='apply disturbance to test the robustness')
-    parser.add_argument('--visualize', action='store_true', help='visualize each solution before executing (NOTE: this is blocking and needs to press "ESC" to continue)')
-    args = parser.parse_args()
-
-    task_list = {
-        'pen': {
-            'scene_file': './configs/og_scene_file_pen.json',
-            'instruction': 'reorient the white pen and drop it upright into the black pen holder',
-            'rekep_program_dir': './vlm_query/pen',
-            'disturbance_seq': None,
-            },
-        "block": {
+def build_task(task_name, instruction):
+    task = {
             'scene_file': None,
-            'instruction': 'pick up block on the table',
-            'rekep_program_dir': './vlm_query/block',
+            'instruction': instruction,
+            'rekep_program_dir': f'./vlm_query/{task_name}',
             'disturbance_seq': None
-        }
     }
+    return task
 
-    task = task_list['block']
+def exec_task(task):
     scene_file = task['scene_file']
     instruction = task['instruction']
     
@@ -305,3 +291,50 @@ if __name__ == '__main__':
     main.perform_task(instruction,
                     rekep_program_dir=task['rekep_program_dir'] if args.use_cached_query else None,
                     disturbance_seq=task.get('disturbance_seq', None) if args.apply_disturbance else None)
+import datetime
+experiment_date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+output_dir = "./evaluation/" + experiment_date
+interactive_path = "/home/lr-2002/project/reasoning_manipulation/ManiSkill/env_ins_objects.pkl"
+import pickle as pkl
+
+error_list = []
+# processed_count = 0
+total_count = 0
+NUM_EPISODE=2
+
+with open(interactive_path, "rb") as f:
+    env_dict = pkl.load(f)
+    total_count = len(env_dict)
+    # breakpoint()
+    print(f"Loaded {total_count} environments from {interactive_path}")
+primitive_list_pkl ="/home/lr-2002/project/reasoning_manipulation/ManiSkill/list_primitive_task.pkl"
+
+with open(primitive_list_pkl, "rb") as f:
+    primitive_list = pkl.load(f)
+# try:
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--task', type=str, default='pen', help='task to perform')
+    parser.add_argument('--use_cached_query', action='store_true', help='instead of querying the VLM, use the cached query')
+    parser.add_argument('--apply_disturbance', action='store_true', help='apply disturbance to test the robustness')
+    parser.add_argument('--visualize', action='store_true', help='visualize each solution before executing (NOTE: this is blocking and needs to press "ESC" to continue)')
+    parser.add_argument('--run_pri', action='store_true', default=True, help='run primitive ? ')
+    parser.add_argument('--run_inter', action='store_true', default=True, help='run interacitve?')
+    args = parser.parse_args()
+    # breakpoint()
+    final_list = []
+    if args.run_pri:
+        final_list.append(primitive_list)
+    if args.run_inter: 
+        final_list.append(env_dict)
+    for task_set in final_list:
+        for task_name, info  in task_set.items():
+            # breakpoint()
+            if isinstance(info, dict):
+                info = info['ins']
+
+            exec_task(build_task(task_name, info))
+        
+
+

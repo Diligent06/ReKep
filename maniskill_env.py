@@ -29,7 +29,7 @@ CLOSE = 0
 OPEN = 1
 
 class ManiSkill_Env():
-    def __init__(self, config=None, verbose=False, task_name="PickCube-v1", obs_mode="rgb+depth+segmentation", dt=1/60, control_mode='pd_joint_pos'):
+    def __init__(self, config=None, verbose=False, task_name="Tabletop-Pick-Apple-v1", obs_mode="rgb+depth+segmentation", dt=1/60, control_mode='pd_joint_pos'):
 
         self.env = gym.make(
             task_name, # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
@@ -37,6 +37,8 @@ class ManiSkill_Env():
             obs_mode=obs_mode, # there is also "state_dict", "rgbd", ...
             control_mode=control_mode, # there is also "", ...
             render_mode="rgb_array",
+            camera_width=512,  # Camera resolution width
+            camera_height=512,  # Camera resolution height
         )
         
         debug = False
@@ -75,7 +77,7 @@ class ManiSkill_Env():
         self.default_quat = self.get_ee_quat()
 
         self.frame = 'world'
-        self.camera_list = ['base_camera']
+        self.camera_list = ['base_camera', 'base_front_camera']
 
         # rekep part
         self.config = config
@@ -461,7 +463,7 @@ class ManiSkill_Env():
         # add gripper collision points
         collision_points = []
         for art in self.env.scene.articulations:
-            if art == 'panda':
+            if art == 'panda' or art == "panda_wristcam":
                 entity = self.env.scene.articulations[art]
                 for link in entity.links:
 
@@ -484,6 +486,7 @@ class ManiSkill_Env():
                 collision_meshs = (entity).get_collision_meshes()
                 collision_points.append(collision_meshs.sample(1000))
 
+        
         collision_points = np.concatenate(collision_points, axis=0)
         return collision_points
     
@@ -746,7 +749,7 @@ class ManiSkill_Env():
         intrinsic_matrix = np.squeeze(cam_param['intrinsic_cv'].numpy())
 
         color_points = self.depth_to_point_cloud(intrinsic_matrix, depth, rgb, mask)
-        if self.frame == 'base':
+        if self.frame == 'base_front':
             return color_points
         cam2world_gl = np.squeeze(cam_param['cam2world_gl'].numpy())
         color_points[:, :3] = self.transform_camera_to_world(color_points[:, :3], cam2world_gl)
