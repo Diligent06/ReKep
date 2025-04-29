@@ -43,12 +43,13 @@ class TqdmWrapper(gym.Wrapper):
         super().__init__(env)
         self.max_episode_steps = max_episode_steps
         self.desc = desc
+        self.cnt = 0
         self.pbar = None
 
     def reset(self, **kwargs):
         # 重置环境
         obs, info = self.env.reset(**kwargs)
-
+        self.cnt = 0
         # 如果有旧的进度条，先关闭
         if self.pbar is not None:
             self.pbar.close()
@@ -61,12 +62,12 @@ class TqdmWrapper(gym.Wrapper):
     def step(self, action):
         # 执行 step
         obs, reward, terminated, truncated, info = self.env.step(action)
-
+        self.cnt += 1
         # 更新进度条
         if self.pbar is not None:
             self.pbar.update(1)
 
-        # 如果 episode 结束，关闭进度条
+        # # 如果 episode 结束，关闭进度条
         if terminated or truncated:
             # pdb.set_trace()
             self.close()
@@ -93,7 +94,7 @@ class ManiSkill_Env():
             camera_width=512,  # Camera resolution width
             camera_height=512,  # Camera resolution height
         )
-        term_steps = 5000 
+        term_steps = 15
         self.env = TimeLimit(self.env, max_episode_steps=term_steps)
         self.env = VLARecorderWrapper(
             self.env,

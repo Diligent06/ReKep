@@ -443,7 +443,6 @@ if __name__ == "__main__":
                 )
                 import traceback
                 traceback.print_exc()
-                breakpoint()
                 try: 
                     mani_env.close()
                 except Exception as e :
