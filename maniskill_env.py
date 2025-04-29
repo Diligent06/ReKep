@@ -25,7 +25,7 @@ sys.path.append(os.getcwd())
 from gymnasium.wrappers import TimeLimit
 from mani_skill.utils.wrappers import VLARecorderWrapper
 from utils import *
-
+import tqdm
 CLOSE = 0
 OPEN = 1
 

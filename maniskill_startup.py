@@ -29,16 +29,14 @@ from subgoal_solver import SubgoalSolver
 from path_solver import PathSolver
 from visualizer import Visualizer
 
-global_config = get_config(config_path="./configs/config.yaml")
-mani_env = ManiSkill_Env(config=global_config, control_mode="pd_ee_pose")
-mani_env.reset()
-
 # print(mani_env.get_collision_points)
 
 
 class Main:
     def __init__(self, env, visualize=False):
         global_config = get_config(config_path="./configs/config.yaml")
+
+        self.output_dir = output_dir
         self.config = global_config["main"]
         self.bounds_min = np.array(self.config["bounds_min"])
         self.bounds_max = np.array(self.config["bounds_max"])
@@ -346,7 +344,7 @@ def build_task(task_name, instruction):
     return task
 
 
-def exec_task(task):
+def exec_task(mani_env, task):
     scene_file = task["scene_file"]
     instruction = task["instruction"]
 
@@ -421,11 +419,15 @@ if __name__ == "__main__":
     for task_set in final_list:
         for task_name, info in task_set.items():
             # breakpoint()
+
+            global_config = get_config(config_path="./configs/config.yaml")
+            mani_env = ManiSkill_Env(task_name=task_name, config=global_config, control_mode="pd_ee_pose", output_dir=output_dir , model_class='rekep_base')
+            mani_env.reset()
             if isinstance(info, dict):
                 info = info["ins"]
 
             try:
-                exec_task(build_task(task_name, info), output_dir)
+                exec_task(mani_env, build_task(task_name, info))
             except KeyboardInterrupt:
                 print(
                     f"[Interrupted] Task '{task_name}' was interrupted by user (Ctrl+C). Skipping..."
