@@ -175,6 +175,8 @@ class ManiSkill_Env():
         self.init_qpos = np.squeeze(self.env.agent.robot.get_qpos().numpy())[:7] # get each motor pos of initialize pose
         self.init_qvel = np.squeeze(self.env.agent.robot.get_qvel().numpy())[:7]
         self.init_pose, self.init_quat = self.get_ee_pose()
+        for i in range(1, 8):
+            self.env.step(self.get_tcp_pose())
         obs = self.env.unwrapped.get_obs()
         self.latest_obs = obs
         self.latest_action = np.concatenate([self.init_pose, self.init_quat, np.array([1])])
@@ -304,11 +306,13 @@ class ManiSkill_Env():
         self.apply_action(action, ignore_arm=True)
         
     def get_ee_pose(self):
-        obs = self.env.unwrapped.get_obs()
-        tcp_pose = np.squeeze(obs['extra']['tcp_pose'].numpy())
+        tcp_pose = self.get_tcp_pose()
         position, quat = tcp_pose[:3], tcp_pose[3:]
         return position, quat
-    
+    def get_tcp_pose(self):
+        obs = self.env.unwrapped.get_obs()
+        tcp_pose = np.squeeze(obs['extra']['tcp_pose'].numpy())
+        return tcp_pose
     def get_ee_pos(self):
         position, quat = self.get_ee_pose()
         return position
