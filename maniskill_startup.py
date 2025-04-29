@@ -144,7 +144,8 @@ class Main:
         # main loop
         self.last_sim_step_counter = -np.inf
         self._update_stage(1)
-        while True:
+        breakpoint()
+        while not self.env.done:
             scene_keypoints = self.env.get_keypoint_positions()
             self.keypoints = np.concatenate(
                 [[self.env.get_ee_pos()], scene_keypoints], axis=0
@@ -208,6 +209,7 @@ class Main:
                 while (
                     len(self.action_queue) > 0
                     and count < self.config["action_steps_per_iter"]
+                    and not self.env.done
                 ):
                     next_action = self.action_queue.pop(0)
                     precise = len(self.action_queue) == 0
