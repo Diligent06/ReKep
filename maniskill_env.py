@@ -93,7 +93,7 @@ class ManiSkill_Env():
             camera_width=512,  # Camera resolution width
             camera_height=512,  # Camera resolution height
         )
-        term_steps = 50
+        term_steps = 5000 
         self.env = TimeLimit(self.env, max_episode_steps=term_steps)
         self.env = VLARecorderWrapper(
             self.env,

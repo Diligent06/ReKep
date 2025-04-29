@@ -28,7 +28,7 @@ class KeypointProposer:
         features_flat = self._get_features(transformed_rgb, shape_info)
         # for each mask, cluster in feature space to get meaningful regions, and uske their centers as keypoint candidates
 
-        breakpoint()
+        # breakpoint()
         candidate_keypoints, candidate_pixels, candidate_rigid_group_ids = self._cluster_features(points, features_flat, masks)
         # exclude keypoints that are outside of the workspace
         # print(f"\033[34m {candidate_keypoints.shape} \033[0m")
