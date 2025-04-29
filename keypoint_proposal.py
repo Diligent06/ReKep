@@ -28,7 +28,7 @@ class KeypointProposer:
         features_flat = self._get_features(transformed_rgb, shape_info)
         # for each mask, cluster in feature space to get meaningful regions, and uske their centers as keypoint candidates
 
-
+        breakpoint()
         candidate_keypoints, candidate_pixels, candidate_rigid_group_ids = self._cluster_features(points, features_flat, masks)
         # exclude keypoints that are outside of the workspace
         # print(f"\033[34m {candidate_keypoints.shape} \033[0m")
@@ -132,7 +132,10 @@ class KeypointProposer:
             X = features_pca
             # add feature_pixels as extra dimensions
             feature_points_torch = torch.tensor(feature_points, dtype=features_pca.dtype, device=features_pca.device)
+            # breakpoint()
             feature_points_torch  = (feature_points_torch - feature_points_torch.min(0)[0]) / (feature_points_torch.max(0)[0] - feature_points_torch.min(0)[0])
+            if torch.isnan(feature_points_torch).any():
+                continue
             X = torch.cat([X, feature_points_torch], dim=-1)
             # cluster features to get meaningful regions
             try: 
@@ -145,6 +148,7 @@ class KeypointProposer:
             except Exception as e:
                 print(f"Exception {e}")
                 ipdb.set_trace()
+            # breakpoint()
             cluster_centers = cluster_centers.to(self.device)
             for cluster_id in range(self.config['num_candidates_per_mask']):
                 cluster_center = cluster_centers[cluster_id][:3]

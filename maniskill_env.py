@@ -93,7 +93,7 @@ class ManiSkill_Env():
             camera_width=512,  # Camera resolution width
             camera_height=512,  # Camera resolution height
         )
-        term_steps = 2000
+        term_steps = 50
         self.env = TimeLimit(self.env, max_episode_steps=term_steps)
         self.env = VLARecorderWrapper(
             self.env,
@@ -140,7 +140,7 @@ class ManiSkill_Env():
         self.default_quat = self.get_ee_quat()
 
         self.frame = 'world'
-        self.camera_list = ['base_camera', 'base_front_camera']
+        self.camera_list = ['base_camera', 'base_front_camera', 'human_camera']
 
         # rekep part
         self.config = config
@@ -448,7 +448,11 @@ class ManiSkill_Env():
                     if len(link.meshes) != 0:
                         colli_mesh = link.meshes[link.name]
                     else:
-                        colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+                        try:
+                            colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+                        except Exception as e:
+                            print('skipping link ', link.name)
+                            continue
                     for mesh in colli_mesh:
                         points_world = mesh.sample(1000)
                         dists = np.linalg.norm(points_world - keypoint, axis=1)
@@ -543,7 +547,13 @@ class ManiSkill_Env():
                         if len(link.meshes) != 0:
                             colli_mesh = link.meshes[link.name]
                         else:
-                            colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+
+                            try:
+                                colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+                            except Exception as e:
+                                print('skipping link ', link.name)
+                                continue
+                            # colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
                         for mesh in colli_mesh:
                             points_world = mesh.sample(1000)
                             collision_points.append(points_world)
@@ -600,7 +610,12 @@ class ManiSkill_Env():
                     if len(link.meshes) != 0:
                         colli_mesh = link.meshes[link.name]
                     else:
-                        colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+                        try:
+                            colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+                        except Exception as e:
+                            print('skipping link ', link.name)
+                            continue
+                        # colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
                     trimesh_objects = trimesh_objects + colli_mesh
                     # trimesh_objects.append(colli_mesh)
                 
@@ -878,3 +893,5 @@ class ManiSkill_Env():
         transfer_mat = maniskill_down @ o3d_down.T
         
         return maniskill_down @ rot
+    def close(self):
+        self.env.close()

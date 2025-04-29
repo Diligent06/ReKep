@@ -428,6 +428,10 @@ if __name__ == "__main__":
 
             try:
                 exec_task(mani_env, build_task(task_name, info))
+                try: 
+                    mani_env.close()
+                except Exception as e :
+                     pass
             except KeyboardInterrupt:
                 print(
                     f"[Interrupted] Task '{task_name}' was interrupted by user (Ctrl+C). Skipping..."
@@ -437,4 +441,11 @@ if __name__ == "__main__":
                 print(
                     f"[Error] Exception occurred while executing task '{task_name}': {e}"
                 )
+                import traceback
+                traceback.print_exc()
+                breakpoint()
+                try: 
+                    mani_env.close()
+                except Exception as e :
+                     pass
                 continue
