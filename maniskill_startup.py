@@ -425,7 +425,7 @@ if __name__ == "__main__":
                 info = info["ins"]
 
             try:
-                exec_task(build_task(task_name, info))
+                exec_task(build_task(task_name, info), output_dir)
             except KeyboardInterrupt:
                 print(
                     f"[Interrupted] Task '{task_name}' was interrupted by user (Ctrl+C). Skipping..."

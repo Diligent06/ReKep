@@ -22,14 +22,67 @@ import os
 from os.path import join
 import sys
 sys.path.append(os.getcwd())
-
+from gymnasium.wrappers import TimeLimit
+from mani_skill.utils.wrappers import VLARecorderWrapper
 from utils import *
 
 CLOSE = 0
 OPEN = 1
 
+class TqdmWrapper(gym.Wrapper):
+    """
+    为 ManiSkill 环境添加 tqdm 进度条的包装器。
+
+    Args:
+        env: 要包装的 Gymnasium 环境。
+        max_episode_steps: 每个 episode 的最大步数。
+        desc: 进度条的描述。
+    """
+
+    def __init__(self, env, max_episode_steps, desc="Episode Progress"):
+        super().__init__(env)
+        self.max_episode_steps = max_episode_steps
+        self.desc = desc
+        self.pbar = None
+
+    def reset(self, **kwargs):
+        # 重置环境
+        obs, info = self.env.reset(**kwargs)
+
+        # 如果有旧的进度条，先关闭
+        if self.pbar is not None:
+            self.pbar.close()
+
+        # 初始化新的 tqdm 进度条
+        self.pbar = tqdm.tqdm(total=self.max_episode_steps, desc=self.desc)
+
+        return obs, info
+
+    def step(self, action):
+        # 执行 step
+        obs, reward, terminated, truncated, info = self.env.step(action)
+
+        # 更新进度条
+        if self.pbar is not None:
+            self.pbar.update(1)
+
+        # 如果 episode 结束，关闭进度条
+        if terminated or truncated:
+            # pdb.set_trace()
+            self.close()
+
+        return obs, reward, terminated, truncated, info
+
+    def close(self):
+        # 关闭进度条（如果存在）
+        if self.pbar is not None:
+            self.pbar.close()
+            self.pbar = None
+        # 关闭环境
+        super().close()
+
 class ManiSkill_Env():
-    def __init__(self, config=None, verbose=False, task_name="Tabletop-Pick-Apple-v1", obs_mode="rgb+depth+segmentation", dt=1/60, control_mode='pd_joint_pos'):
+    def __init__(self, config=None, verbose=False, task_name="Tabletop-Pick-Apple-v1", obs_mode="rgb+depth+segmentation", dt=1/60, control_mode='pd_joint_pos', output_dir='test', model_class="rekep_default"):
 
         self.env = gym.make(
             task_name, # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
@@ -40,7 +93,17 @@ class ManiSkill_Env():
             camera_width=512,  # Camera resolution width
             camera_height=512,  # Camera resolution height
         )
-        
+        term_steps = 2000
+        self.env = TimeLimit(self.env, max_episode_steps=term_steps)
+        self.env = VLARecorderWrapper(
+            self.env,
+            output_dir=output_dir,
+            model_class=model_class,
+            model_path="None",
+            save_trajectory=False,
+        )
+
+        self.env = TqdmWrapper(self.env, max_episode_steps=term_steps)
         debug = False
         vis = False
         if control_mode == 'pd_joint_pos':
@@ -195,6 +258,9 @@ class ManiSkill_Env():
         self.init_qpos = np.squeeze(self.env.agent.robot.get_qpos().numpy())[:7] # get each motor pos of initialize pose, contain finger pos
         self.init_qvel = np.squeeze(self.env.agent.robot.get_qvel().numpy())[:7]
         self.init_pose, self.init_quat = self.get_ee_pose()
+
+        for i in range(1, 8):
+            self.env.step(self.get_tcp_pose())
         obs = self.env.unwrapped.get_obs()
         self.latest_obs = obs
         self.latest_action = np.concatenate([self.init_pose, self.init_quat, np.array([1])])
