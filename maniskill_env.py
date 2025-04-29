@@ -1,4 +1,5 @@
 from mani_skill.utils import sapien_utils
+import sapien.wrapper.pinocchio_model
 import gymnasium as gym
 import cv2
 import numpy as np
@@ -343,7 +344,8 @@ class ManiSkill_Env():
         self.keypoints = keypoints
         self._keypoint_registry = dict()
         self._keypoint2object = dict()
-        exclude_names = ['wall', 'floor', 'ceiling', 'table', 'fetch', 'robot']
+        exclude_names = ['wall', 'floor', 'ceiling', 'table', 'fetch', 'robot', 'ground','panda', 'goal']
+        # breakpoint()
         for idx, keypoint in enumerate(keypoints):
             closest_distance = np.inf
             for obj in self.env.scene.actors:
@@ -353,6 +355,7 @@ class ManiSkill_Env():
                 # a list of object mesh in world frame
                 # print(type(entity))
                 # print(f"\033[91m {entity} \033[0m")
+                print(entity.name)
                 collision_meshs = (entity).get_collision_meshes()
                 for mesh in collision_meshs:
                     points_world = mesh.sample(1000)
@@ -461,14 +464,20 @@ class ManiSkill_Env():
             if art == 'panda':
                 entity = self.env.scene.articulations[art]
                 for link in entity.links:
-                    if len(link.meshes) != 0:
-                        colli_mesh = link.meshes[link.name]
-                    else:
-                        colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
-                    for mesh in colli_mesh:
-                        points_world = mesh.sample(1000)
-                        collision_points.append(points_world)
 
+                    if 'link8' in link.name :
+                        continue
+                    try:
+                        if len(link.meshes) != 0:
+                            colli_mesh = link.meshes[link.name]
+                        else:
+                            colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+                        for mesh in colli_mesh:
+                            points_world = mesh.sample(1000)
+                            collision_points.append(points_world)
+                    except Exception as e:
+                        print('exception', e)
+                        continue 
         for obj in self.env.scene.actors:
             entity = self.env.scene.actors[obj]
             if self.env.agent.is_grasping(entity):
@@ -483,7 +492,7 @@ class ManiSkill_Env():
     
     def get_sdf_voxels(self, resolution, exclude_robot=True, exclude_obj_in_hand=True):
         start = time.time()
-        exclude_names = ['wall', 'floor', 'ceiling']
+        exclude_names = ['wall', 'floor', 'ceiling', 'table', 'ground', 'goal']
         if exclude_robot:
             exclude_names += ['fetch', 'robot', 'panda']
         if exclude_obj_in_hand:
@@ -503,6 +512,8 @@ class ManiSkill_Env():
                 entity = self.env.scene.actors[obj]
                 if any([name in obj.lower() for name in exclude_names]):
                     continue
+                # breakpoint()
+                print(entity.name)
                 collision_meshs = (entity).get_collision_meshes()
                 trimesh_objects = trimesh_objects + collision_meshs
                 # trimesh_objects.append(collision_meshs)
@@ -686,12 +697,12 @@ class ManiSkill_Env():
     '''
     def get_3d_point_cloud(self, camera_name, use_depth=False):
         obs = self.env.unwrapped.get_obs()
-        depth = np.squeeze(obs['sensor_data'][camera_name]['depth'].numpy()) / 1000.0
-        rgb = np.squeeze(obs['sensor_data'][camera_name]['rgb'].numpy())
+        depth = np.squeeze(obs['sensor_data'][camera_name]['depth'].cpu().numpy()) / 1000.0
+        rgb = np.squeeze(obs['sensor_data'][camera_name]['rgb'].cpu().numpy())
         param = obs['sensor_param'][camera_name]
-        mask = np.squeeze(obs['sensor_data'][camera_name]['segmentation'].numpy())
+        mask = np.squeeze(obs['sensor_data'][camera_name]['segmentation'].cpu().numpy())
 
-        intrinsic_matrix = np.squeeze(param['intrinsic_cv'].numpy())
+        intrinsic_matrix = np.squeeze(param['intrinsic_cv'].cpu().numpy())
 
         # points_mask_colors = self.depth_to_pc(intrinsic_matrix, depth, rgb, mask)
         points_colors = self.get_color_points(rgb, depth, param, mask)

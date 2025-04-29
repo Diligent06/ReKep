@@ -132,7 +132,7 @@ class SubgoalSolver:
         self.reset_joint_pos = reset_joint_pos
         self.last_opt_result = None
         # warmup
-        self._warmup()
+        # self._warmup()
 
 
     def _warmup(self):
