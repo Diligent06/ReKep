@@ -144,7 +144,7 @@ class Main:
         # main loop
         self.last_sim_step_counter = -np.inf
         self._update_stage(1)
-        breakpoint()
+        # breakpoint()
         while not self.env.done:
             scene_keypoints = self.env.get_keypoint_positions()
             self.keypoints = np.concatenate(
