@@ -57,13 +57,13 @@ def objective(opt_vars,
     success = iter is not None
 
     if not success:
-        print("\033[91m IK solve failed \033[0m")
+        # print("\033[91m IK solve failed \033[0m")
         ik_cost = 20.0
         debug_dict['ik_feasible'] = success
         debug_dict['ik_pos_error'] = 0
         debug_dict['ik_cost'] = ik_cost
     else:
-        print("\033[91m IK solve success \033[0m")
+        # print("\033[91m IK solve success \033[0m")
         ik_cost = 20.0 * (iter / max_iterations)
         debug_dict['ik_feasible'] = success
         debug_dict['ik_pos_error'] = error

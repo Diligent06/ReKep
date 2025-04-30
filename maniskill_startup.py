@@ -1,4 +1,5 @@
 import argparse
+from joblib.memory import filter_args
 import numpy as np
 
 # from transforms3d.quaternions import mat2quat, quat2mat
@@ -70,6 +71,18 @@ class Main:
                 # set the disturbance sequence, the generator will yield and instantiate one disturbance function for each env.step until it is exhausted
                 self.env.disturbance_seq = disturbance_seq[stage](self.env)
                 self.applied_disturbance[stage] = True
+    def filter_mask(self, mask):
+        exclude_name = ['table', 'ground', 'panda_link', 'camera']
+        uid = np.unique(mask)
+        filtered_mask = mask.copy()
+        self.id2name = self.env.id2name
+        for uuid in uid:
+            if uuid not in self.id2name.keys():
+                continue 
+            name = self.id2name[uuid]
+            if any(exc in name for exc in exclude_name):
+                filtered_mask[mask == uuid] = 0  # Set to background
+        return filtered_mask
 
     def perform_task(self, instruction, rekep_program_dir=None, disturbance_seq=None):
         self.env.reset()
@@ -77,6 +90,7 @@ class Main:
         rgb = cam_obs[self.config["vlm_camera"]]["rgb"]
         points = cam_obs[self.config["vlm_camera"]]["points"]
         mask = cam_obs[self.config["vlm_camera"]]["seg"]
+        mask = self.filter_mask(mask)
         # ====================================
         # = keypoint proposal and constraint generation
         # ====================================

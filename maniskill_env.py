@@ -94,8 +94,8 @@ class ManiSkill_Env():
             obs_mode=obs_mode, # there is also "state_dict", "rgbd", ...
             control_mode=control_mode, # there is also "", ...
             render_mode="rgb_array",
-            camera_width=512,  # Camera resolution width
-            camera_height=512,  # Camera resolution height
+            camera_width=1024,  # Camera resolution width
+            camera_height=1024,  # Camera resolution height
         )
         term_steps = 5000
         self.env = TimeLimit(self.env, max_episode_steps=term_steps)
@@ -239,6 +239,7 @@ class ManiSkill_Env():
 
     def reset(self):
         self.env.reset()
+        # self.name_id_dict = self.env.unwrapped.get_all_name_id_dict()
         self.init_qpos = np.squeeze(self.env.agent.robot.get_qpos().numpy())[:7] # get each motor pos of initialize pose
         self.init_qvel = np.squeeze(self.env.agent.robot.get_qvel().numpy())[:7]
         self.init_pose, self.init_quat = self.get_ee_pose()
@@ -249,6 +250,10 @@ class ManiSkill_Env():
         self.latest_action = np.concatenate([self.init_pose, self.init_quat, np.array([1])])
         self.update_cameras_view()
     
+    # @property
+    # def name_id_dict(self):
+    #     return self.name_id_dict
+
     @property
     def reset_joint_pos(self):
         return self.init_qpos
@@ -421,7 +426,6 @@ class ManiSkill_Env():
         self._keypoint_registry = dict()
         self._keypoint2object = dict()
         exclude_names = ['wall', 'floor', 'ceiling', 'table', 'fetch', 'robot', 'ground','panda', 'goal']
-        # breakpoint()
         for idx, keypoint in enumerate(keypoints):
             closest_distance = np.inf
             for obj in self.env.scene.actors:
