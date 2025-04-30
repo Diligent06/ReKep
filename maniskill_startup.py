@@ -406,10 +406,13 @@ if __name__ == "__main__":
         help='visualize each solution before executing (NOTE: this is blocking and needs to press "ESC" to continue)',
     )
     parser.add_argument(
-        "--run_pri", action="store_true", default=True, help="run primitive ? "
+        "--run_pri", action="store_true", default=False, help="run primitive ? "
     )
     parser.add_argument(
-        "--run_inter", action="store_true", default=True, help="run interacitve?"
+        "--run_inter", action="store_true", default=False, help="run interacitve?"
+    )
+    parser.add_argument(
+        "-f", "--filter", type=str, default='', help="run interacitve?"
     )
     args = parser.parse_args()
     # breakpoint()
@@ -420,6 +423,8 @@ if __name__ == "__main__":
         final_list.append(env_dict)
     for task_set in final_list:
         for task_name, info in task_set.items():
+            if not(args.filter.lower() in task_name.lower()):
+                continue
             # breakpoint()
 
             global_config = get_config(config_path="./configs/config.yaml")
