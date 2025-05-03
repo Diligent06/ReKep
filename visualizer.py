@@ -65,10 +65,11 @@ class Visualizer:
 
     def _get_scene_points_and_colors(self):
         # scene
+        # breakpoint()
         cam_obs = self.env.get_cam_obs()
         scene_points = []
         scene_colors = []
-        for cam_id in range(len(cam_obs)):
+        for cam_id in cam_obs.keys():
             cam_points = cam_obs[cam_id]['points'].reshape(-1, 3)
             cam_colors = cam_obs[cam_id]['rgb'].reshape(-1, 3) / 255.0
             # clip to workspace
@@ -93,7 +94,9 @@ class Visualizer:
         # subgoal
         collision_points = self.env.get_collision_points(noise=False)
         # transform collision points to the subgoal frame
-        ee_pose = self.env.get_ee_pose()
+        ee_pos, ee_quat = self.env.get_ee_pose()
+        ee_pose = (*ee_pos, *ee_quat)
+        ee_pose = np.array(ee_pose)
         ee_pose_homo = T.convert_pose_quat2mat(ee_pose)
         centering_transform = np.linalg.inv(ee_pose_homo)
         collision_points_centered = np.dot(collision_points, centering_transform[:3, :3].T) + centering_transform[:3, 3]
@@ -147,8 +150,10 @@ class Visualizer:
         # path points
         collision_points = self.env.get_collision_points(noise=False)
         num_points = collision_points.shape[0]
-        start_pose = self.env.get_ee_pose()
-        centering_transform = np.linalg.inv(T.convert_pose_quat2mat(start_pose))
+        ee_pos, ee_quat = self.env.get_ee_pose()
+        ee_pose = (*ee_pos, *ee_quat)
+        ee_pose = np.array(ee_pose)
+        centering_transform = np.linalg.inv(T.convert_pose_quat2mat(ee_pose))
         collision_points_centered = np.dot(collision_points, centering_transform[:3, :3].T) + centering_transform[:3, 3]
         poses_homo = T.convert_pose_quat2mat(path[:, :7])  # the last number is gripper action
         transformed_collision_points = batch_transform_points(collision_points_centered, poses_homo).reshape(-1, 3)  # (num_poses, num_points, 3)

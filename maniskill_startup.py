@@ -1,4 +1,5 @@
 import argparse
+from ast import parse
 from joblib.memory import filter_args
 import numpy as np
 
@@ -71,14 +72,15 @@ class Main:
                 # set the disturbance sequence, the generator will yield and instantiate one disturbance function for each env.step until it is exhausted
                 self.env.disturbance_seq = disturbance_seq[stage](self.env)
                 self.applied_disturbance[stage] = True
+
     def filter_mask(self, mask):
-        exclude_name = ['table', 'ground', 'panda_link', 'camera']
+        exclude_name = ["table", "ground", "panda_link", "camera"]
         uid = np.unique(mask)
         filtered_mask = mask.copy()
         self.id2name = self.env.id2name
         for uuid in uid:
             if uuid not in self.id2name.keys():
-                continue 
+                continue
             name = self.id2name[uuid]
             if any(exc in name for exc in exclude_name):
                 filtered_mask[mask == uuid] = 0  # Set to background
@@ -378,9 +380,7 @@ import datetime
 
 experiment_date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 output_dir = "./evaluation/" + experiment_date
-interactive_path = (
-    "/home/lr-2002/project/reasoning_manipulation/ManiSkill/env_ins_objects.pkl"
-)
+interactive_path = "/home/lr-2002/project/reasoning_manipulation/ManiSkill/interactive_instruction_objects.pkl"
 import pickle as pkl
 
 error_list = []
@@ -393,9 +393,7 @@ with open(interactive_path, "rb") as f:
     total_count = len(env_dict)
     # breakpoint()
     print(f"Loaded {total_count} environments from {interactive_path}")
-primitive_list_pkl = (
-    "/home/lr-2002/project/reasoning_manipulation/ManiSkill/list_primitive_task.pkl"
-)
+primitive_list_pkl = "/home/lr-2002/project/reasoning_manipulation/ManiSkill/primitive_instruction_objects.pkl"
 
 with open(primitive_list_pkl, "rb") as f:
     primitive_list = pkl.load(f)
@@ -425,10 +423,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--run_inter", action="store_true", default=False, help="run interacitve?"
     )
+    parser.add_argument("-f", "--filter", type=str, default="", help="run interacitve?")
     parser.add_argument(
-        "-f", "--filter", type=str, default='', help="run interacitve?"
+        "-n", "--num_episode", type=int, default=2, help="how many num_episode"
     )
+
     args = parser.parse_args()
+    NUM_EPISODE = args.num_episode
     # breakpoint()
     final_list = []
     if args.run_pri:
@@ -437,22 +438,28 @@ if __name__ == "__main__":
         final_list.append(env_dict)
     for task_set in final_list:
         for task_name, info in task_set.items():
-            if not(args.filter.lower() in task_name.lower()):
+            if not (args.filter.lower() in task_name.lower()):
                 continue
             # breakpoint()
 
             global_config = get_config(config_path="./configs/config.yaml")
-            mani_env = ManiSkill_Env(task_name=task_name, config=global_config, control_mode="pd_ee_pose", output_dir=output_dir , model_class='rekep_base')
+            mani_env = ManiSkill_Env(
+                task_name=task_name,
+                config=global_config,
+                control_mode="pd_ee_pose",
+                output_dir=output_dir,
+                model_class="rekep_base",
+            )
             mani_env.reset()
             if isinstance(info, dict):
                 info = info["ins"]
 
             try:
                 exec_task(mani_env, build_task(task_name, info))
-                try: 
+                try:
                     mani_env.close()
-                except Exception as e :
-                     pass
+                except Exception as e:
+                    pass
             except KeyboardInterrupt:
                 print(
                     f"[Interrupted] Task '{task_name}' was interrupted by user (Ctrl+C). Skipping..."
@@ -463,9 +470,10 @@ if __name__ == "__main__":
                     f"[Error] Exception occurred while executing task '{task_name}': {e}"
                 )
                 import traceback
+
                 traceback.print_exc()
-                try: 
+                try:
                     mani_env.close()
-                except Exception as e :
-                     pass
+                except Exception as e:
+                    pass
                 continue

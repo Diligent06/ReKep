@@ -144,7 +144,7 @@ class ManiSkill_Env():
         self.default_quat = self.get_ee_quat()
 
         self.frame = 'world'
-        self.camera_list = ['base_camera', 'base_front_camera', 'human_camera']
+        self.camera_list = ['base_camera', 'base_front_camera','base_up_front_camera', 'front_camera']
 
         # rekep part
         self.config = config
