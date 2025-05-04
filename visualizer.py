@@ -52,7 +52,7 @@ class Visualizer:
         print('showing image, click on the window and press "ESC" to close and continue')
         cv2.destroyAllWindows()
     
-    def show_pointcloud(self, points, colors):
+    def show_pointcloud(self, points, colors, phase="path"):
         # transform to viewer frame
         points = np.dot(points, self.world2viewer[:3, :3].T) + self.world2viewer[:3, 3]
         # clip color to [0, 1]
@@ -60,7 +60,7 @@ class Visualizer:
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(points.astype(np.float64))  # float64 is a lot faster than float32 when added to o3d later
         pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
-        print('visualizing pointcloud, click on the window and press "ESC" to close and continue')
+        print(f'visualizing {phase} pointcloud, click on the window and press "ESC" to close and continue')
         o3d.visualization.draw_geometries([pcd])
 
     def _get_scene_points_and_colors(self):
@@ -109,6 +109,8 @@ class Visualizer:
         color_map = matplotlib.colormaps["gist_rainbow"]
         keypoints_colors = [color_map(i / num_keypoints)[:3] for i in range(num_keypoints)]
         for i in range(num_keypoints):
+            if i == 1:
+                break
             nearby_points = generate_nearby_points(keypoints[i], num_points_per_side=6, half_range=0.009)
             nearby_colors = np.tile(keypoints_colors[i], (nearby_points.shape[0], 1))
             nearby_colors = 0.5 * nearby_colors + 0.5 * np.array([1, 1, 1])
@@ -116,7 +118,7 @@ class Visualizer:
         # visualize
         visualize_points = np.concatenate(visualize_buffer["points"], axis=0)
         visualize_colors = np.concatenate(visualize_buffer["colors"], axis=0)
-        self.show_pointcloud(visualize_points, visualize_colors)
+        self.show_pointcloud(visualize_points, visualize_colors, phase="subgoal")
 
     def visualize_path(self, path):
         visualize_buffer = {
@@ -177,4 +179,4 @@ class Visualizer:
         # visualize
         visualize_points = np.concatenate(visualize_buffer["points"], axis=0)
         visualize_colors = np.concatenate(visualize_buffer["colors"], axis=0)
-        self.show_pointcloud(visualize_points, visualize_colors)
+        self.show_pointcloud(visualize_points, visualize_colors, phase="path")

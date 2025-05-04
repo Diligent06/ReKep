@@ -1,3 +1,4 @@
+from skimage import draw
 from mani_skill.utils import sapien_utils
 import sapien.wrapper.pinocchio_model
 import gymnasium as gym
@@ -6,8 +7,9 @@ import numpy as np
 from transforms3d.quaternions import mat2quat, quat2mat
 import sapien.core as sapien
 from mani_skill.utils import sapien_utils
-from mani_skill.examples.motionplanning.panda.motionplanner import \
-    PandaArmMotionPlanningSolver
+from mani_skill.examples.motionplanning.panda.motionplanner import (
+    PandaArmMotionPlanningSolver,
+)
 import transform_utils as T
 from scipy.spatial.transform import Rotation as R
 import open3d as o3d
@@ -15,19 +17,25 @@ import trimesh
 import time
 from mani_skill.utils.geometry.rotation_conversions import (
     matrix_to_euler_angles,
-    quaternion_to_matrix
+    quaternion_to_matrix,
 )
 import torch
 import os
 from os.path import join
 import sys
+
 sys.path.append(os.getcwd())
 from gymnasium.wrappers import TimeLimit
 from mani_skill.utils.wrappers import VLARecorderWrapper
 from utils import *
 import tqdm
+
 CLOSE = 0
 OPEN = 1
+from utils_vis import visualize_sdf, visualize_sdf_open3d, draw_pc
+from transforms3d.quaternions import mat2quat, quat2mat
+from utils_vis import visualize_points_open3d
+
 
 class TqdmWrapper(gym.Wrapper):
     """
@@ -44,18 +52,18 @@ class TqdmWrapper(gym.Wrapper):
         self.max_episode_steps = max_episode_steps
         self.desc = desc
         self.cnt = 0
-        self.done = False 
+        self.done = False
         self.pbar = None
 
     def reset(self, **kwargs):
         # 重置环境
         obs, info = self.env.reset(**kwargs)
         self.cnt = 0
-        self.not_done = False 
+        self.not_done = False
         # 如果有旧的进度条，先关闭
         if self.pbar is not None:
             self.pbar.close()
-        
+
         # 初始化新的 tqdm 进度条
         self.pbar = tqdm.tqdm(total=self.max_episode_steps, desc=self.desc)
 
@@ -85,14 +93,24 @@ class TqdmWrapper(gym.Wrapper):
         # 关闭环境
         super().close()
 
-class ManiSkill_Env():
-    def __init__(self, config=None, verbose=False, task_name="Tabletop-Pick-Apple-v1", obs_mode="rgb+depth+segmentation", dt=1/60, control_mode='pd_joint_pos', output_dir='test', model_class="rekep_default"):
 
+class ManiSkill_Env:
+    def __init__(
+        self,
+        config=None,
+        verbose=False,
+        task_name="Tabletop-Pick-Apple-v1",
+        obs_mode="rgb+depth+segmentation",
+        dt=1 / 60,
+        control_mode="pd_joint_pos",
+        output_dir="test",
+        model_class="rekep_default",
+    ):
         self.env = gym.make(
-            task_name, # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
+            task_name,  # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
             num_envs=1,
-            obs_mode=obs_mode, # there is also "state_dict", "rgbd", ...
-            control_mode=control_mode, # there is also "", ...
+            obs_mode=obs_mode,  # there is also "state_dict", "rgbd", ...
+            control_mode=control_mode,  # there is also "pd_joint_delta_pos", ...
             render_mode="rgb_array",
             camera_width=1024,  # Camera resolution width
             camera_height=1024,  # Camera resolution height
@@ -110,7 +128,7 @@ class ManiSkill_Env():
         self.env = TqdmWrapper(self.env, max_episode_steps=term_steps)
         debug = False
         vis = False
-        if control_mode == 'pd_joint_pos':
+        if control_mode == "pd_joint_pos":
             self.planner = PandaArmMotionPlanningSolver(
                 self.env,
                 debug=debug,
@@ -123,7 +141,7 @@ class ManiSkill_Env():
             )
         else:
             self.planner = None
-        
+
         self.control_mode = control_mode
         self.dt = dt
         self.interp_num = 2
@@ -136,29 +154,38 @@ class ManiSkill_Env():
         self.name2id = {v: k for k, v in self.id2name.items()}
         self.robot_mask_ids = []
         for key in self.name2id.keys():
-            if key.split('_')[0] == 'panda':
+            if key.split("_")[0] == "panda":
                 self.robot_mask_ids.append(self.name2id[key])
-        
+
         self.base_position = np.squeeze(self.env.unwrapped.agent.robot.pose.p.numpy())
 
         self.default_quat = self.get_ee_quat()
 
-        self.frame = 'world'
-        self.camera_list = ['base_camera', 'base_front_camera','base_up_front_camera', 'front_camera']
+        self.frame = "world"
+        self.camera_list = [
+            "base_camera",
+            "base_front_camera",
+            "base_up_front_camera",
+            "front_camera",
+        ]
 
         # rekep part
         self.config = config
 
         if config is not None:
-            self.bounds_min = np.array(self.config['main']['bounds_min'])
-            self.bounds_max = np.array(self.config['main']['bounds_max'])
-            self.interpolate_pos_step_size = self.config['main']['interpolate_pos_step_size']
-            self.interpolate_rot_step_size = self.config['main']['interpolate_rot_step_size']
+            self.bounds_min = np.array(self.config["main"]["bounds_min"])
+            self.bounds_max = np.array(self.config["main"]["bounds_max"])
+            self.interpolate_pos_step_size = self.config["main"][
+                "interpolate_pos_step_size"
+            ]
+            self.interpolate_rot_step_size = self.config["main"][
+                "interpolate_rot_step_size"
+            ]
 
         self.verbose = verbose
 
-        self.ik_solver = self.env.agent.controller.controllers['arm']
-        
+        self.ik_solver = self.env.agent.controller.controllers["arm"]
+
     @property
     def workspace_bounds_max(self):
         return self.bounds_max
@@ -166,7 +193,7 @@ class ManiSkill_Env():
     @property
     def workspace_bounds_min(self):
         return self.bounds_min
-    
+
     @property
     def base_transformation(self):
         pos = np.squeeze(self.env.unwrapped.agent.robot.pose.p.numpy())
@@ -189,10 +216,10 @@ class ManiSkill_Env():
         new_goal_pose[:3] = goal_tf[0:3, 3]
         new_goal_pose[3:] = mat2quat(goal_tf[0:3, 0:3])
         return new_goal_pose
-    
+
     def world_to_robot(self, object_pos, object_quat, robot_pos, robot_quat):
         # Step 1: Create transform matrices
-        obj_R = R.from_quat(object_quat).as_matrix()    # 3x3 rotation matrix
+        obj_R = R.from_quat(object_quat).as_matrix()  # 3x3 rotation matrix
         robot_R = R.from_quat(robot_quat).as_matrix()
 
         # Step 2: Build homogeneous matrices
@@ -216,40 +243,43 @@ class ManiSkill_Env():
 
         return trans, rot
 
-
     def update_cameras_view(self):
         obs = self.env.unwrapped.render_all()
         obs = np.squeeze(obs.numpy())
         # print(f"\033[91m end-effector position is {self.get_ee_pos()}  \033[0m")
         bgr_obs_show = cv2.cvtColor(obs, cv2.COLOR_RGB2BGR)
-        cv2.imshow('obs', bgr_obs_show)
+        cv2.imshow("obs", bgr_obs_show)
         cv2.waitKey(int(self.dt * 1000))
 
     def load_task(self, task_name, obs_mode="rgb+depth+segmentation"):
         self.env = gym.make(
-            task_name, # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
+            task_name,  # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
             num_envs=1,
-            obs_mode=obs_mode, # there is also "state_dict", "rgbd", ...
-            control_mode="pd_joint_delta_pos", # there is also "pd_joint_delta_pos", ...
+            obs_mode=obs_mode,  # there is also "state_dict", "rgbd", ...
+            control_mode="pd_joint_delta_pos",  # there is also "pd_joint_delta_pos", ...
             render_mode="rgb_array",
         )
-    
+
     def set_env_resolution(self, set_env_resolution):
         pass
 
     def reset(self):
         self.env.reset()
         # self.name_id_dict = self.env.unwrapped.get_all_name_id_dict()
-        self.init_qpos = np.squeeze(self.env.agent.robot.get_qpos().numpy())[:7] # get each motor pos of initialize pose
+        self.init_qpos = np.squeeze(self.env.agent.robot.get_qpos().numpy())[
+            :7
+        ]  # get each motor pos of initialize pose
         self.init_qvel = np.squeeze(self.env.agent.robot.get_qvel().numpy())[:7]
         self.init_pose, self.init_quat = self.get_ee_pose()
         for i in range(1, 8):
             self.env.step(self.get_tcp_pose())
         obs = self.env.unwrapped.get_obs()
         self.latest_obs = obs
-        self.latest_action = np.concatenate([self.init_pose, self.init_quat, np.array([1])])
+        self.latest_action = np.concatenate(
+            [self.init_pose, self.init_quat, np.array([1])]
+        )
         self.update_cameras_view()
-    
+
     # @property
     # def name_id_dict(self):
     #     return self.name_id_dict
@@ -264,7 +294,9 @@ class ManiSkill_Env():
         self.apply_action(action)
 
     def _reset_task_variables(self):
-        self.init_qpos = np.squeeze(self.env.agent.robot.get_qpos().numpy())[:7] # get each motor pos of initialize pose, contain finger pos
+        self.init_qpos = np.squeeze(self.env.agent.robot.get_qpos().numpy())[
+            :7
+        ]  # get each motor pos of initialize pose, contain finger pos
         self.init_qvel = np.squeeze(self.env.agent.robot.get_qvel().numpy())[:7]
         self.init_pose, self.init_quat = self.get_ee_pose()
 
@@ -272,7 +304,9 @@ class ManiSkill_Env():
             self.env.step(self.get_tcp_pose())
         obs = self.env.unwrapped.get_obs()
         self.latest_obs = obs
-        self.latest_action = np.concatenate([self.init_pose, self.init_quat, np.array([1])])
+        self.latest_action = np.concatenate(
+            [self.init_pose, self.init_quat, np.array([1])]
+        )
         self.update_cameras_view()
 
     def apply_action(self, action, ignore_arm=False, ignore_ee=False):
@@ -285,7 +319,7 @@ class ManiSkill_Env():
         Returns:
             tuple: A tuple containing the latest observations, reward, and termination flag.
         """
-        if self.control_mode == 'pd_joint_pos':
+        if self.control_mode == "pd_joint_pos":
             if not ignore_ee:
                 ee_action = action[7]
                 ee_action = ee_action > 0.5
@@ -316,10 +350,12 @@ class ManiSkill_Env():
                 pose = sapien.Pose(p=arm_pos, q=arm_quat)
                 result = self.planner.move_to_pose_with_screw((pose), dry_run=True)
                 if result == -1:
-                    print(f'result = -1, cannot move to target pose by IK planner')
+                    print(f"result = -1, cannot move to target pose by IK planner")
                 else:
-                    for pos in result['position']:
-                        cur_pos = np.squeeze(self.env.agent.robot.get_qpos().numpy())[:7]
+                    for pos in result["position"]:
+                        cur_pos = np.squeeze(self.env.agent.robot.get_qpos().numpy())[
+                            :7
+                        ]
                         end_pos = pos
                         diff_pos = end_pos - cur_pos
                         for i in range(self.interp_num):
@@ -330,7 +366,7 @@ class ManiSkill_Env():
                             self.env.step(pos)
                             self.latest_action = pos
                             self.update_cameras_view()
-        elif self.control_mode == 'pd_ee_pose':
+        elif self.control_mode == "pd_ee_pose":
             if len(action) == 7:
                 action = np.concatenate([action, self.latest_action[-1:]])
                 ignore_ee = True
@@ -346,7 +382,7 @@ class ManiSkill_Env():
             else:
                 step_action[:-1] = action[:-1]
                 self.latest_action[:-1] = action[:-1]
-            
+
             step_space = np.zeros(7)
             pose_wrt_base = self.transform_goal_to_wrt_base(step_action[:7])
             step_space[:3] = pose_wrt_base[:3]
@@ -358,17 +394,17 @@ class ManiSkill_Env():
 
     def quat2rpy(self, quat):
         matrix = quaternion_to_matrix(torch.tensor(quat))
-        rpy = matrix_to_euler_angles(matrix, 'XYZ').numpy()
+        rpy = matrix_to_euler_angles(matrix, "XYZ").numpy()
         return rpy
 
     def open_gripper(self):
         action = np.array([0, 0, 0, 0, 0, 0, 0, 1])
         self.apply_action(action, ignore_arm=True)
-    
+
     def close_gripper(self):
-        if self.control_mode == 'pd_joint_pos':
+        if self.control_mode == "pd_joint_pos":
             action = np.array([0, 0, 0, 0, 0, 0, 0, 0])
-        elif self.control_mode == 'pd_ee_pose':
+        elif self.control_mode == "pd_ee_pose":
             action = np.array([0, 0, 0, 0, 0, 0, 0, -1])
         self.apply_action(action, ignore_arm=True)
 
@@ -379,15 +415,17 @@ class ManiSkill_Env():
     def set_gripper_state(self, state):
         action = np.array([0, 0, 0, 0, 0, 0, 0, state])
         self.apply_action(action, ignore_arm=True)
-        
+
     def get_ee_pose(self):
         tcp_pose = self.get_tcp_pose()
         position, quat = tcp_pose[:3], tcp_pose[3:]
         return position, quat
+
     def get_tcp_pose(self):
         obs = self.env.unwrapped.get_obs()
-        tcp_pose = np.squeeze(obs['extra']['tcp_pose'].numpy())
+        tcp_pose = np.squeeze(obs["extra"]["tcp_pose"].numpy())
         return tcp_pose
+
     def get_ee_pos(self):
         position, quat = self.get_ee_pose()
         return position
@@ -395,23 +433,26 @@ class ManiSkill_Env():
     def get_ee_quat(self):
         position, quat = self.get_ee_pose()
         return quat
-    
+
     def get_last_gripper_action(self):
         return self.latest_action[-1]
 
-
-
-
-
-    ''' Start ReKep'''
+    """ Start ReKep"""
 
     def get_cam_obs(self):
         self.last_cam_obs = dict()
         for cam in self.camera_list:
-            points, rgb, points_mask, depth = self.get_3d_point_cloud(cam, use_depth=True)
-            self.last_cam_obs[cam] = {'rgb': rgb, 'depth': depth, 'points': points, 'seg': points_mask}
+            points, rgb, points_mask, depth = self.get_3d_point_cloud(
+                cam, use_depth=True
+            )
+            self.last_cam_obs[cam] = {
+                "rgb": rgb,
+                "depth": depth,
+                "points": points,
+                "seg": points_mask,
+            }
         return self.last_cam_obs
-    
+
     def register_keypoints(self, keypoints):
         """
         Args:
@@ -425,7 +466,17 @@ class ManiSkill_Env():
         self.keypoints = keypoints
         self._keypoint_registry = dict()
         self._keypoint2object = dict()
-        exclude_names = ['wall', 'floor', 'ceiling', 'table', 'fetch', 'robot', 'ground','panda', 'goal']
+        exclude_names = [
+            "wall",
+            "floor",
+            "ceiling",
+            "table",
+            "fetch",
+            "robot",
+            "ground",
+            "panda",
+            "goal",
+        ]
         for idx, keypoint in enumerate(keypoints):
             closest_distance = np.inf
             for obj in self.env.scene.actors:
@@ -457,9 +508,11 @@ class ManiSkill_Env():
                         colli_mesh = link.meshes[link.name]
                     else:
                         try:
-                            colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+                            colli_mesh = link.generate_mesh(
+                                filter=lambda _, render_shape: True, mesh_name=link.name
+                            )
                         except Exception as e:
-                            print('skipping link ', link.name)
+                            print("skipping link ", link.name)
                             continue
                     for mesh in colli_mesh:
                         points_world = mesh.sample(1000)
@@ -485,7 +538,9 @@ class ManiSkill_Env():
             np.ndarray: keypoints in the world frame of shape (N, 3)
         Given the registered keypoints, this function returns their current positions in the world frame.
         """
-        assert hasattr(self, '_keypoint_registry') and self._keypoint_registry is not None, "Keypoints have not been registered yet."
+        assert (
+            hasattr(self, "_keypoint_registry") and self._keypoint_registry is not None
+        ), "Keypoints have not been registered yet."
         keypoint_positions = []
         for idx, (closest_obj, pose, link_name) in self._keypoint_registry.items():
             tran = pose.p.cpu().numpy()
@@ -493,7 +548,9 @@ class ManiSkill_Env():
             rot = T.quat2mat(quat)
             init_pose = T.pose2mat((tran, quat))
             centering_transform = T.pose_inv(init_pose)
-            keypoint_centered = np.dot(centering_transform, np.append(self.keypoints[idx], 1))[:3]
+            keypoint_centered = np.dot(
+                centering_transform, np.append(self.keypoints[idx], 1)
+            )[:3]
             if closest_obj in self.env.scene.articulations:
                 entity = self.env.scene.articulations[closest_obj]
                 for link in entity.links:
@@ -502,7 +559,7 @@ class ManiSkill_Env():
             else:
                 entity = self.env.scene.actors[closest_obj]
                 curr_pose = entity.pose
-            
+
             tran = curr_pose.p.cpu().numpy()
             quat = curr_pose.q.cpu().numpy()
             rot = T.quat2mat(quat)
@@ -511,7 +568,7 @@ class ManiSkill_Env():
             keypoint = np.dot(curr_pose, np.append(keypoint_centered, 1))[:3]
             keypoint_positions.append(keypoint)
         return np.array(keypoint_positions)
-    
+
     def get_object_by_keypoint(self, keypoint_idx):
         """
         Args:
@@ -520,7 +577,9 @@ class ManiSkill_Env():
             pointer: the object that the keypoint is associated with
         Given the keypoint index, this function returns the name of the object that the keypoint is associated with.
         """
-        assert hasattr(self, '_keypoint2object') and self._keypoint2object is not None, "Keypoints have not been registered yet."
+        assert (
+            hasattr(self, "_keypoint2object") and self._keypoint2object is not None
+        ), "Keypoints have not been registered yet."
         return self._keypoint2object[keypoint_idx]
 
     def is_grasping(self, candidate_obj):
@@ -544,50 +603,122 @@ class ManiSkill_Env():
         """
         # add gripper collision points
         collision_points = []
+        # breakpoint()
         for art in self.env.scene.articulations:
-            if art == 'panda' or art == "panda_wristcam":
+            if art == "panda" or art == "panda_wristcam":
                 entity = self.env.scene.articulations[art]
                 for link in entity.links:
-
-                    if 'link8' in link.name :
+                    if "link8" in link.name:
                         continue
+
                     try:
                         if len(link.meshes) != 0:
                             colli_mesh = link.meshes[link.name]
                         else:
-
                             try:
-                                colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+                                colli_mesh = link.generate_mesh(
+                                    filter=lambda _, render_shape: True,
+                                    mesh_name=link.name,
+                                )
                             except Exception as e:
-                                print('skipping link ', link.name)
+                                print("skipping link ", link.name)
                                 continue
-                            # colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+
                         for mesh in colli_mesh:
-                            points_world = mesh.sample(1000)
+                            points_local = mesh.sample(1000)
+
+                            import numpy as np
+
+                            pose = link.pose
+                            # self.save_link_mesh(link.name, points_local, pose)
+
+                            R_mat = quat2mat(pose.q[0])
+                            points_local_np = np.asarray(points_local).reshape(-1, 3)
+                            pose_p_np = np.asarray(pose.p).reshape(1, 3)
+                            points_world = (R_mat @ points_local_np.T).T + pose_p_np
+                            rotation_y_180 = np.array(
+                                [[-1, 0, 0], [0, 1, 0], [0, 0, -1]]
+                            )
+                            points_world = (rotation_y_180 @ points_world.T).T
                             collision_points.append(points_world)
                     except Exception as e:
-                        print('exception', e)
-                        continue 
+                        print("exception", e)
+                        continue
         for obj in self.env.scene.actors:
             entity = self.env.scene.actors[obj]
             if self.env.agent.is_grasping(entity):
+                breakpoint()
                 collision_meshs = (entity).get_collision_meshes()
-                collision_points.append(collision_meshs.sample(1000))
+                if isinstance(collision_meshs, list):
+                    for mesh in collision_meshs:
+                        collision_points.append(self.convert_mesh(entity, mesh))
 
-        
         collision_points = np.concatenate(collision_points, axis=0)
+        # breakpoint()
+        draw_pc(collision_points)
+        # visualize_points_open3d(collision_points)
         return collision_points
-    
+    def convert_mesh(self,entity, mesh):
+        points_local = mesh.sample(1000)
+        pose = entity.pose
+        R_mat = quat2mat(pose.q[0])
+        points_local_np = np.asarray(points_local).reshape(-1, 3)
+        pose_p_np = np.asarray(pose.p).reshape(1, 3)
+        points_world = (R_mat @ points_local_np.T).T + pose_p_np
+        rotation_y_180 = np.array(
+        [[-1, 0, 0], [0, 1, 0], [0, 0, -1]]
+        )
+
+        points_world = (rotation_y_180 @ points_world.T).T
+        return points_world
+    def save_link_mesh(self, name, mesh, pose):
+        """
+        Save mesh vertices, faces, and pose (position, quaternion) using numpy only.
+        All data is stored in a single .npz file per link.
+        """
+        import os
+        import numpy as np
+
+        save_dir = os.path.join("debug_link_meshes")
+        os.makedirs(save_dir, exist_ok=True)
+        mesh_filename = os.path.join(save_dir, f"{name}.npz")
+        try:
+            # Try to extract vertices and faces from mesh
+            if hasattr(mesh, "vertices") and hasattr(mesh, "faces"):
+                vertices = np.asarray(mesh.vertices)
+                faces = np.asarray(mesh.faces)
+            elif hasattr(mesh, "as_open3d"):
+                o3d_mesh = mesh.as_open3d()
+                vertices = np.asarray(o3d_mesh.vertices)
+                faces = np.asarray(o3d_mesh.triangles)
+            else:
+                vertices = None
+                faces = None
+            pose_p = np.asarray(pose.p)
+            pose_q = np.asarray(pose.q)
+            np.savez(
+                mesh_filename,
+                vertices=vertices,
+                faces=faces,
+                pose_p=pose_p,
+                pose_q=pose_q,
+            )
+        except Exception as e:
+            print(f"[save_link_mesh] Failed to save mesh/pose for {name}: {e}")
+
     def get_arm_joint_positions(self):
         return np.squeeze(self.env.agent.robot.get_qpos().numpy())[:7]
-    
+
     def get_sdf_voxels(self, resolution, exclude_robot=True, exclude_obj_in_hand=True):
         start = time.time()
-        exclude_names = ['wall', 'floor', 'ceiling', 'table', 'ground', 'goal']
+        exclude_names = ["wall", "floor", "ceiling", "table", "ground", "goal"]
         if exclude_robot:
-            exclude_names += ['fetch', 'robot', 'panda']
+            exclude_names += ["fetch", "robot", "panda"]
         if exclude_obj_in_hand:
-            assert self.config['env']['robot']['robot_config']['grasping_mode'] in ['assisted', 'sticky'], "Currently only supported for assisted or sticky grasping"
+            assert self.config["env"]["robot"]["robot_config"]["grasping_mode"] in [
+                "assisted",
+                "sticky",
+            ], "Currently only supported for assisted or sticky grasping"
             # in_hand_obj = self.robot._ag_obj_in_hand[self.robot.default_arm]
             in_hand_obj = None
             for obj in self.env.scene.actors:
@@ -596,52 +727,62 @@ class ManiSkill_Env():
                     in_hand_obj = obj
             if in_hand_obj is not None:
                 exclude_names.append(in_hand_obj.lower())
-                #exclude_names.append(in_hand_obj.name.lower()) # raw code
+                # exclude_names.append(in_hand_obj.name.lower()) # raw code
         trimesh_objects = []
-        
+
         for obj in self.env.scene.actors:
-                entity = self.env.scene.actors[obj]
-                if any([name in obj.lower() for name in exclude_names]):
-                    continue
-                # breakpoint()
-                print(entity.name)
-                collision_meshs = (entity).get_collision_meshes()
-                trimesh_objects = trimesh_objects + collision_meshs
-                # trimesh_objects.append(collision_meshs)
-                
+            entity = self.env.scene.actors[obj]
+            if any([name in obj.lower() for name in exclude_names]):
+                continue
+            # breakpoint()
+            print(entity.name)
+            collision_meshs = (entity).get_collision_meshes()
+            trimesh_objects = trimesh_objects + collision_meshs
+            # trimesh_objects.append(collision_meshs)
+
         for obj in self.env.scene.articulations:
-                if any([name in obj.lower() for name in exclude_names]):
-                    continue
-                trimesh_objects = []
-                entity = self.env.scene.articulations[obj]
-                for link in entity.links:
-                    if len(link.meshes) != 0:
-                        colli_mesh = link.meshes[link.name]
-                    else:
-                        try:
-                            colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
-                        except Exception as e:
-                            print('skipping link ', link.name)
-                            continue
-                        # colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
-                    trimesh_objects = trimesh_objects + colli_mesh
-                    # trimesh_objects.append(colli_mesh)
-                
+            if any([name in obj.lower() for name in exclude_names]):
+                continue
+            trimesh_objects = []
+            entity = self.env.scene.articulations[obj]
+            for link in entity.links:
+                if len(link.meshes) != 0:
+                    colli_mesh = link.meshes[link.name]
+                else:
+                    try:
+                        colli_mesh = link.generate_mesh(
+                            filter=lambda _, render_shape: True, mesh_name=link.name
+                        )
+                    except Exception as e:
+                        print("skipping link ", link.name)
+                        continue
+                    # colli_mesh = link.generate_mesh(filter=lambda _, render_shape: True, mesh_name=link.name)
+                trimesh_objects = trimesh_objects + colli_mesh
+                # trimesh_objects.append(colli_mesh)
+
         # chain trimesh objects
         scene_mesh = trimesh.util.concatenate(trimesh_objects)
         # Create a scene and add the triangle mesh
         scene = o3d.t.geometry.RaycastingScene()
         vertex_positions = scene_mesh.vertices
         triangle_indices = scene_mesh.faces
-        vertex_positions = o3d.core.Tensor(vertex_positions, dtype=o3d.core.Dtype.Float32)
-        triangle_indices = o3d.core.Tensor(triangle_indices, dtype=o3d.core.Dtype.UInt32)
-        _ = scene.add_triangles(vertex_positions, triangle_indices)  # we do not need the geometry ID for mesh
+        vertex_positions = o3d.core.Tensor(
+            vertex_positions, dtype=o3d.core.Dtype.Float32
+        )
+        triangle_indices = o3d.core.Tensor(
+            triangle_indices, dtype=o3d.core.Dtype.UInt32
+        )
+        _ = scene.add_triangles(
+            vertex_positions, triangle_indices
+        )  # we do not need the geometry ID for mesh
         # create a grid
         shape = np.ceil((self.bounds_max - self.bounds_min) / resolution).astype(int)
         steps = (self.bounds_max - self.bounds_min) / shape
-        grid = np.mgrid[self.bounds_min[0]:self.bounds_max[0]:steps[0],
-                        self.bounds_min[1]:self.bounds_max[1]:steps[1],
-                        self.bounds_min[2]:self.bounds_max[2]:steps[2]]
+        grid = np.mgrid[
+            self.bounds_min[0] : self.bounds_max[0] : steps[0],
+            self.bounds_min[1] : self.bounds_max[1] : steps[1],
+            self.bounds_min[2] : self.bounds_max[2] : steps[2],
+        ]
         grid = grid.reshape(3, -1).T
         # compute SDF
         sdf_voxels = scene.compute_signed_distance(grid.astype(np.float32))
@@ -650,95 +791,113 @@ class ManiSkill_Env():
         # open3d has flipped sign from our convention
         sdf_voxels = -sdf_voxels
         sdf_voxels = sdf_voxels.reshape(shape)
-        print(f'{bcolors.WARNING}[environment.py | {get_clock_time()}] SDF voxels computed in {time.time() - start:.4f} seconds{bcolors.ENDC}')
+        print(
+            f"{bcolors.WARNING}[environment.py | {get_clock_time()}] SDF voxels computed in {time.time() - start:.4f} seconds{bcolors.ENDC}"
+        )
+        # visualize_sdf_open3d(sdf_voxels)
         return sdf_voxels
-    
+
     def execute_action(
-            self,
-            action,
-            precise=True,
+        self,
+        action,
+        precise=True,
+    ):
+        """
+        Moves the robot gripper to a target pose by specifying the absolute pose in the world frame and executes gripper action.
+
+        Args:
+            action (x, y, z, qx, qy, qz, qw, gripper_action): absolute target pose in the world frame + gripper action.
+            precise (bool): whether to use small position and rotation thresholds for precise movement (robot would move slower).
+        Returns:
+            tuple: A tuple containing the position and rotation errors after reaching the target pose.
+        """
+        if precise:
+            pos_threshold = 0.03
+            rot_threshold = 3.0
+        else:
+            pos_threshold = 0.10
+            rot_threshold = 5.0
+        action = np.array(action).copy()
+        assert action.shape == (8,)
+        target_pose = action[:7]
+        gripper_action = action[7]
+
+        # ======================================
+        # = status and safety check
+        # ======================================
+        if np.any(target_pose[:3] < self.bounds_min) or np.any(
+            target_pose[:3] > self.bounds_max
         ):
-            """
-            Moves the robot gripper to a target pose by specifying the absolute pose in the world frame and executes gripper action.
+            print(
+                f"{bcolors.WARNING}[environment.py | {get_clock_time()}] Target position is out of bounds, clipping to workspace bounds{bcolors.ENDC}"
+            )
+            target_pose[:3] = np.clip(target_pose[:3], self.bounds_min, self.bounds_max)
 
-            Args:
-                action (x, y, z, qx, qy, qz, qw, gripper_action): absolute target pose in the world frame + gripper action.
-                precise (bool): whether to use small position and rotation thresholds for precise movement (robot would move slower).
-            Returns:
-                tuple: A tuple containing the position and rotation errors after reaching the target pose.
-            """
-            if precise:
-                pos_threshold = 0.03
-                rot_threshold = 3.0
-            else:
-                pos_threshold = 0.10
-                rot_threshold = 5.0
-            action = np.array(action).copy()
-            assert action.shape == (8,)
-            target_pose = action[:7]
-            gripper_action = action[7]
+        # ======================================
+        # = interpolation
+        # ======================================
+        current_pose = np.concatenate(self.get_ee_pose(), axis=0)
+        pos_diff = np.linalg.norm(current_pose[:3] - target_pose[:3])
+        rot_diff = angle_between_quats(current_pose[3:7], target_pose[3:7])
+        pos_is_close = pos_diff < self.interpolate_pos_step_size
+        rot_is_close = rot_diff < self.interpolate_rot_step_size
+        if pos_is_close and rot_is_close:
+            self.verbose and print(
+                f"{bcolors.WARNING}[environment.py | {get_clock_time()}] Skipping interpolation{bcolors.ENDC}"
+            )
+            pose_seq = np.array([target_pose])
+        else:
+            num_steps = get_linear_interpolation_steps(
+                current_pose,
+                target_pose,
+                self.interpolate_pos_step_size,
+                self.interpolate_rot_step_size,
+            )
+            pose_seq = linear_interpolate_poses(current_pose, target_pose, num_steps)
+            self.verbose and print(
+                f"{bcolors.WARNING}[environment.py | {get_clock_time()}] Interpolating for {num_steps} steps{bcolors.ENDC}"
+            )
 
-            # ======================================
-            # = status and safety check
-            # ======================================
-            if np.any(target_pose[:3] < self.bounds_min) \
-                 or np.any(target_pose[:3] > self.bounds_max):
-                print(f'{bcolors.WARNING}[environment.py | {get_clock_time()}] Target position is out of bounds, clipping to workspace bounds{bcolors.ENDC}')
-                target_pose[:3] = np.clip(target_pose[:3], self.bounds_min, self.bounds_max)
+        # ======================================
+        # = move to target pose
+        # ======================================
+        # move faster for intermediate poses
+        intermediate_pos_threshold = 0.10
+        intermediate_rot_threshold = 5.0
+        for pose in pose_seq[:-1]:
+            self.apply_action(pose, False, True)
+            # self._move_to_waypoint(pose, intermediate_pos_threshold, intermediate_rot_threshold)
+        # move to the final pose with required precision
+        pose = pose_seq[-1]
+        for iter in range(20):
+            self.apply_action(pose, False, True)
+        # self._move_to_waypoint(pose, pos_threshold, rot_threshold, max_steps=20 if not precise else 40)
+        # compute error
+        pos_error, rot_error = self.compute_target_delta_ee(target_pose)
+        self.verbose and print(
+            f"\n{bcolors.BOLD}[environment.py | {get_clock_time()}] Move to pose completed (pos_error: {pos_error}, rot_error: {np.rad2deg(rot_error)}){bcolors.ENDC}\n"
+        )
 
-            # ======================================
-            # = interpolation
-            # ======================================
-            current_pose = np.concatenate(self.get_ee_pose(), axis=0)
-            pos_diff = np.linalg.norm(current_pose[:3] - target_pose[:3])
-            rot_diff = angle_between_quats(current_pose[3:7], target_pose[3:7])
-            pos_is_close = pos_diff < self.interpolate_pos_step_size
-            rot_is_close = rot_diff < self.interpolate_rot_step_size
-            if pos_is_close and rot_is_close:
-                self.verbose and print(f'{bcolors.WARNING}[environment.py | {get_clock_time()}] Skipping interpolation{bcolors.ENDC}')
-                pose_seq = np.array([target_pose])
-            else:
-                num_steps = get_linear_interpolation_steps(current_pose, target_pose, self.interpolate_pos_step_size, self.interpolate_rot_step_size)
-                pose_seq = linear_interpolate_poses(current_pose, target_pose, num_steps)
-                self.verbose and print(f'{bcolors.WARNING}[environment.py | {get_clock_time()}] Interpolating for {num_steps} steps{bcolors.ENDC}')
+        # ======================================
+        # = apply gripper action
+        # ======================================
+        if gripper_action == self.get_gripper_open_action():
+            self.open_gripper()
+        elif gripper_action == self.get_gripper_close_action():
+            self.close_gripper()
+        elif gripper_action == self.get_gripper_null_action():
+            pass
+        else:
+            raise ValueError(f"Invalid gripper action: {gripper_action}")
 
-            # ======================================
-            # = move to target pose
-            # ======================================
-            # move faster for intermediate poses
-            intermediate_pos_threshold = 0.10
-            intermediate_rot_threshold = 5.0
-            for pose in pose_seq[:-1]:
-                self.apply_action(pose, False, True)
-                # self._move_to_waypoint(pose, intermediate_pos_threshold, intermediate_rot_threshold)
-            # move to the final pose with required precision
-            pose = pose_seq[-1]
-            for iter in range(20):
-                self.apply_action(pose, False, True)
-            # self._move_to_waypoint(pose, pos_threshold, rot_threshold, max_steps=20 if not precise else 40) 
-            # compute error
-            pos_error, rot_error = self.compute_target_delta_ee(target_pose)
-            self.verbose and print(f'\n{bcolors.BOLD}[environment.py | {get_clock_time()}] Move to pose completed (pos_error: {pos_error}, rot_error: {np.rad2deg(rot_error)}){bcolors.ENDC}\n')
+        return pos_error, rot_error
 
-            # ======================================
-            # = apply gripper action 
-            # ======================================
-            if gripper_action == self.get_gripper_open_action():
-                self.open_gripper()
-            elif gripper_action == self.get_gripper_close_action():
-                self.close_gripper()
-            elif gripper_action == self.get_gripper_null_action():
-                pass
-            else:
-                raise ValueError(f"Invalid gripper action: {gripper_action}")
-            
-            return pos_error, rot_error
     def get_gripper_close_action(self):
         return CLOSE
-    
+
     def get_gripper_open_action(self):
         return OPEN
-    
+
     def compute_target_delta_ee(self, target_pose):
         ee_tran, ee_quat = self.get_ee_pose()
         pos_error = np.abs(ee_tran - target_pose[:3])
@@ -754,22 +913,13 @@ class ManiSkill_Env():
         ee_pos = action[:3]
         ee_quat = action[3:7]
         matrix = quaternion_to_matrix(torch.tensor(ee_quat))
-        ee_rpy = matrix_to_euler_angles(matrix, 'XYZ').numpy()
+        ee_rpy = matrix_to_euler_angles(matrix, "XYZ").numpy()
 
         action = np.concatenate([ee_pos, ee_rpy]).reshape((1, -1))
 
         iter, error, target_qpos = self.ik_solver.solve(action, iter_flag=True)
 
-    ''' End ReKep '''
-
-
-
-
-
-
-
-
-
+    """ End ReKep """
 
     def get_scene_3d_obs(self, ignore_robot=False, ignore_grasped_obj=False):
         points, rgbs, point_masks = [], [], []
@@ -777,9 +927,10 @@ class ManiSkill_Env():
             point, rgb, point_mask = self.get_3d_point_cloud(camera)
             points.append(point)
             rgbs.append(rgb)
-            point_masks.append(point_mask)        
+            point_masks.append(point_mask)
         return points, rgbs, point_masks
-    '''
+
+    """
     Description: 
         Get 3D point cloud from RGBD cameras from simulator
 
@@ -790,15 +941,18 @@ class ManiSkill_Env():
             3D point cloud's color
         points_mask:
             3D point cloud's semantic id
-    '''
+    """
+
     def get_3d_point_cloud(self, camera_name, use_depth=False):
         obs = self.env.unwrapped.get_obs()
-        depth = np.squeeze(obs['sensor_data'][camera_name]['depth'].cpu().numpy()) / 1000.0
-        rgb = np.squeeze(obs['sensor_data'][camera_name]['rgb'].cpu().numpy())
-        param = obs['sensor_param'][camera_name]
-        mask = np.squeeze(obs['sensor_data'][camera_name]['segmentation'].cpu().numpy())
+        depth = (
+            np.squeeze(obs["sensor_data"][camera_name]["depth"].cpu().numpy()) / 1000.0
+        )
+        rgb = np.squeeze(obs["sensor_data"][camera_name]["rgb"].cpu().numpy())
+        param = obs["sensor_param"][camera_name]
+        mask = np.squeeze(obs["sensor_data"][camera_name]["segmentation"].cpu().numpy())
 
-        intrinsic_matrix = np.squeeze(param['intrinsic_cv'].cpu().numpy())
+        intrinsic_matrix = np.squeeze(param["intrinsic_cv"].cpu().numpy())
 
         # points_mask_colors = self.depth_to_pc(intrinsic_matrix, depth, rgb, mask)
         points_colors = self.get_color_points(rgb, depth, param, mask)
@@ -811,8 +965,8 @@ class ManiSkill_Env():
         else:
             return points.reshape(rgb.shape), rgb, mask, depth
         # n*3, h*w*3, n*3, h*w*1
-    
-    '''
+
+    """
     Description:
         Use camera intrisic matrix and depth map to project 2D image into 3D point cloud
     Args:
@@ -820,18 +974,18 @@ class ManiSkill_Env():
         mask: 2D mask. If mask is not None, return masked point cloud.
     Returns:
         points: 1-3 cols are 3D point cloud, 4 col is mask, 5-7 cols are rgb.
-    '''
+    """
+
     def depth_to_pc(self, K, depth, rgb=None, mask=None):
         H, W = depth.shape
         fx, fy = K[0, 0], K[1, 1]
         cx, cy = K[0, 2], K[1, 2]
-        i, j = np.meshgrid(np.arange(W), np.arange(H), indexing='xy')
-        
+        i, j = np.meshgrid(np.arange(W), np.arange(H), indexing="xy")
+
         x = (i - cx) * depth / fx
         y = (j - cy) * depth / fy
         z = depth
 
-        
         points = np.vstack((x.flatten(), y.flatten(), z.flatten(), mask.flatten())).T
 
         flatten_rgb = rgb.reshape((-1, 3))
@@ -839,72 +993,78 @@ class ManiSkill_Env():
         return points
 
     def get_color_points(self, rgb, depth, cam_param, mask=None):
-        intrinsic_matrix = np.squeeze(cam_param['intrinsic_cv'].numpy())
+        intrinsic_matrix = np.squeeze(cam_param["intrinsic_cv"].numpy())
 
         color_points = self.depth_to_point_cloud(intrinsic_matrix, depth, rgb, mask)
-        if self.frame == 'base_front':
+        if self.frame == "base_front":
             return color_points
-        cam2world_gl = np.squeeze(cam_param['cam2world_gl'].numpy())
-        color_points[:, :3] = self.transform_camera_to_world(color_points[:, :3], cam2world_gl)
+        cam2world_gl = np.squeeze(cam_param["cam2world_gl"].numpy())
+        color_points[:, :3] = self.transform_camera_to_world(
+            color_points[:, :3], cam2world_gl
+        )
         return color_points
 
     def depth_to_point_cloud(self, K, depth, rgb=None, mask=None):
         H, W = depth.shape
         fx, fy = K[0, 0], K[1, 1]
         cx, cy = K[0, 2], K[1, 2]
-        i, j = np.meshgrid(np.arange(W), np.arange(H), indexing='xy')
-        
+        i, j = np.meshgrid(np.arange(W), np.arange(H), indexing="xy")
+
         x = (i - cx) * depth / fx
         y = (j - cy) * depth / fy
         z = depth
         points = np.vstack((x.flatten(), y.flatten(), z.flatten())).T
-        flatten_rgb = rgb.reshape((H*W, 3))
+        flatten_rgb = rgb.reshape((H * W, 3))
         points = np.hstack((points, flatten_rgb))
         return points
-    '''
+
+    """
     Description: 
         transform point cloud from camera coordinicate to world coordinate
-    '''
+    """
+
     def transform_camera_to_world(self, points, extri_mat):
         R = extri_mat[:3, :3]
         t = extri_mat[:3, 3]
         pcd_world = (R @ points.T).T - t
-        rotation_y_180 = np.array([[-1, 0, 0],
-                            [0, 1, 0],
-                            [0, 0, -1]])
+        rotation_y_180 = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]])
         pcd_world = (rotation_y_180 @ pcd_world.T).T
         return pcd_world
-    
+
     def o3d_to_grasp(self, rot):
         theta = np.pi / 2
-        rotate_x = np.array([
+        rotate_x = np.array(
+            [
                 [1, 0, 0],
                 [0, np.cos(theta), -np.sin(theta)],
-                [0, np.sin(theta), np.cos(theta)]
-            ])
-        rotate_y = np.array([
+                [0, np.sin(theta), np.cos(theta)],
+            ]
+        )
+        rotate_y = np.array(
+            [
                 [np.cos(theta), 0, np.sin(theta)],
                 [0, 1, 0],
-                [-np.sin(theta), 0, np.cos(theta)]
-            ])
-        rotate_z = np.array([
+                [-np.sin(theta), 0, np.cos(theta)],
+            ]
+        )
+        rotate_z = np.array(
+            [
                 [np.cos(theta), -np.sin(theta), 0],
                 [np.sin(theta), np.cos(theta), 0],
-                [0, 0, 1]
-            ])
+                [0, 0, 1],
+            ]
+        )
 
-        unit_mat = np.array([[1, 0, 0],
-                             [0, 1, 0],
-                             [0, 0, 1]])
+        unit_mat = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
         maniskill_down = rotate_x @ rotate_x @ unit_mat
         o3d_down = rotate_z @ rotate_y @ unit_mat
         transfer_mat = maniskill_down @ o3d_down.T
-        
+
         return maniskill_down @ rot
+
     def close(self):
         self.env.close()
 
     @property
     def done(self):
         return self.env.done
-

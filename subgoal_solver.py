@@ -81,7 +81,7 @@ def objective(opt_vars,
     # grasp metric (better performance if using anygrasp or force-based grasp metrics)
     if is_grasp_stage:
         preferred_dir = np.array([0, 0, -1]) 
-        grasp_cost = -np.dot(opt_pose_homo[:3, 0], preferred_dir) + 1  # [0, 1]
+        grasp_cost = -np.dot(opt_pose_homo[:3, 2], preferred_dir) + 1  # [0, 1]
         grasp_cost = 10.0 * grasp_cost
         debug_dict['grasp_cost'] = grasp_cost
         cost += grasp_cost
