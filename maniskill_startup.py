@@ -265,9 +265,7 @@ class Main:
         subgoal_pose_homo = T.convert_pose_quat2mat(subgoal_pose)
         # if grasp stage, back up a bit to leave room for grasping
         if self.is_grasp_stage:
-            subgoal_pose[:3] += subgoal_pose_homo[:3, :3] @ np.array(
-                [-self.config["grasp_depth"] / 2.0, 0, 0]
-            )
+            subgoal_pose[:3] += subgoal_pose_homo[:3, :3] @ np.array([0, 0, 0])
         debug_dict["stage"] = self.stage
         print_opt_debug_dict(debug_dict)
         if self.visualize:
