@@ -9,7 +9,7 @@ main:
   bounds_min: &bounds_min [-0.5, -0.5, -0.1]
   bounds_max: &bounds_max [0.5, 0.5, 1.0]
   sdf_voxel_size: 0.005
-  vlm_camera: "human_camera" # 0
+  vlm_camera: "base_front_camera" # 0
   action_steps_per_iter: 5
   seed: *seed
 
