@@ -436,42 +436,43 @@ if __name__ == "__main__":
         final_list.append(env_dict)
     for task_set in final_list:
         for task_name, info in task_set.items():
-            if not (args.filter.lower() in task_name.lower()):
-                continue
-            # breakpoint()
+            for episode in NUM_EPISODE:
+                if not (args.filter.lower() in task_name.lower()):
+                    continue
+                # breakpoint()
 
-            global_config = get_config(config_path="./configs/config.yaml")
-            mani_env = ManiSkill_Env(
-                task_name=task_name,
-                config=global_config,
-                control_mode="pd_ee_pose",
-                output_dir=output_dir,
-                model_class="rekep_base",
-            )
-            mani_env.reset()
-            if isinstance(info, dict):
-                info = info["ins"]
-
-            try:
-                exec_task(mani_env, build_task(task_name, info))
-                try:
-                    mani_env.close()
-                except Exception as e:
-                    pass
-            except KeyboardInterrupt:
-                print(
-                    f"[Interrupted] Task '{task_name}' was interrupted by user (Ctrl+C). Skipping..."
+                global_config = get_config(config_path="./configs/config.yaml")
+                mani_env = ManiSkill_Env(
+                    task_name=task_name,
+                    config=global_config,
+                    control_mode="pd_ee_pose",
+                    output_dir=output_dir,
+                    model_class="rekep_base",
                 )
-                break
-            except Exception as e:
-                print(
-                    f"[Error] Exception occurred while executing task '{task_name}': {e}"
-                )
-                import traceback
+                mani_env.reset()
+                if isinstance(info, dict):
+                    info = info["ins"]
 
-                traceback.print_exc()
                 try:
-                    mani_env.close()
+                    exec_task(mani_env, build_task(task_name, info))
+                    try:
+                        mani_env.close()
+                    except Exception as e:
+                        pass
+                except KeyboardInterrupt:
+                    print(
+                        f"[Interrupted] Task '{task_name}' was interrupted by user (Ctrl+C). Skipping..."
+                    )
+                    break
                 except Exception as e:
-                    pass
-                continue
+                    print(
+                        f"[Error] Exception occurred while executing task '{task_name}': {e}"
+                    )
+                    import traceback
+
+                    traceback.print_exc()
+                    try:
+                        mani_env.close()
+                    except Exception as e:
+                        pass
+                    continue
