@@ -115,7 +115,7 @@ class ManiSkill_Env:
             camera_width=1024,  # Camera resolution width
             camera_height=1024,  # Camera resolution height
         )
-        term_steps = 5000
+        term_steps = 2000
         self.env = TimeLimit(self.env, max_episode_steps=term_steps)
         self.env = VLARecorderWrapper(
             self.env,
@@ -167,6 +167,8 @@ class ManiSkill_Env:
             "base_front_camera",
             "base_up_front_camera",
             "front_camera",
+
+            "vlm_camera"
         ]
 
         # rekep part
@@ -647,13 +649,13 @@ class ManiSkill_Env:
         for obj in self.env.scene.actors:
             entity = self.env.scene.actors[obj]
             if self.env.agent.is_grasping(entity):
-                breakpoint()
+                # breakpoint()
                 collision_meshs = (entity).get_collision_meshes()
                 if isinstance(collision_meshs, list):
                     for mesh in collision_meshs:
                         collision_points.append(self.convert_mesh(entity, mesh))
 
-        collision_points = np.concatenate(collision_points, axis=0)
+        collision_points = np.concatenate(collision_points, axis=1)
         # breakpoint()
         draw_pc(collision_points)
         # visualize_points_open3d(collision_points)

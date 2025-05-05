@@ -147,8 +147,10 @@ class KeypointProposer:
                 )
             except Exception as e:
                 print(f"Exception {e}")
-                ipdb.set_trace()
+                # ipdb.set_trace()
             # breakpoint()
+            if cluster_centers is None:
+                continue
             cluster_centers = cluster_centers.to(self.device)
             for cluster_id in range(self.config['num_candidates_per_mask']):
                 cluster_center = cluster_centers[cluster_id][:3]

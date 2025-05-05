@@ -89,6 +89,7 @@ class Main:
     def perform_task(self, instruction, rekep_program_dir=None, disturbance_seq=None):
         self.env.reset()
         cam_obs = self.env.get_cam_obs()
+        # breakpoint()
         rgb = cam_obs[self.config["vlm_camera"]]["rgb"]
         points = cam_obs[self.config["vlm_camera"]]["points"]
         mask = cam_obs[self.config["vlm_camera"]]["seg"]
@@ -436,7 +437,7 @@ if __name__ == "__main__":
         final_list.append(env_dict)
     for task_set in final_list:
         for task_name, info in task_set.items():
-            for episode in NUM_EPISODE:
+            for episode in range(NUM_EPISODE):
                 if not (args.filter.lower() in task_name.lower()):
                     continue
                 # breakpoint()
