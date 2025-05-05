@@ -6,10 +6,10 @@ main:
   interpolate_rot_step_size: &interpolate_rot_step_size 0.34  # about 20 degrees
   grasp_depth: 0.10
   constraint_tolerance: 0.10  # for backtracking
-  bounds_min: &bounds_min [-0.5, -0.5, -0.1]
-  bounds_max: &bounds_max [0.5, 0.5, 1.0]
+  bounds_min: &bounds_min [-0.6, -0.6, 0]
+  bounds_max: &bounds_max [0.6, 0.6, 0.6]
   sdf_voxel_size: 0.005
-  vlm_camera: "base_front_camera" # 0
+  vlm_camera: "vlm_camera" # 0
   action_steps_per_iter: 5
   seed: *seed
 
@@ -31,17 +31,15 @@ env:
 
   robot:
     robot_config:
-      name: Fetch
-      type: Fetch
+      name: panda
+      type: panda
       obs_modalities: [rgb, depth]
       action_modalities: continuous
       action_normalize: False
-      position: [-0.8, 0.0, 0.]
+      position: [-0.4, 0.0, 0.]
       grasping_mode: assisted
 
       controller_config:
-        base:
-          name: DifferentialDriveController
         arm_0:
           name: OperationalSpaceController
           kp: 250
@@ -101,10 +99,10 @@ keypoint_proposer:
   seed: *seed
 
 constraint_generator:
-  model: chatgpt-4o-latest
+  model: gpt-4o-2024-11-20
   temperature: 0.0
   max_tokens: 2048
 
 visualizer:
-  bounds_min: *bounds_min
   bounds_max: *bounds_max
+  bounds_min: *bounds_min
