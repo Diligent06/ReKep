@@ -21,8 +21,8 @@ class ConstraintGenerator:
     def __init__(self, config):
         self.config = config
         # self.client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
-        # self.client = OpenAI(base_url='https://api.openai-proxy.org/v1',
-        #                      api_key=os.environ['OPENAI_API_KEY'])
+        self.client = OpenAI(base_url='https://api.openai-proxy.org/v1',
+                             api_key=os.environ['OPENAI_API_KEY'])
         self.client = GPT('tonggpt')
         #
         self.base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), './vlm_query')
@@ -144,19 +144,23 @@ class ConstraintGenerator:
         messages = self._build_prompt(image_path, instruction)
         # stream back the response
 
-        stream = self.client.chat.completions.create(model=self.config['model'],
-                                                        messages=messages,
-                                                        temperature=self.config['temperature'],
-                                                        max_tokens=self.config['max_tokens'],
-                                                        stream=True)
-
-        output = ""
+        # stream = self.client.chat.completions.create(model=self.config['model'],
+        #                                                 messages=messages,
+        #                                                 temperature=self.config['temperature'],
+        #                                                 max_tokens=self.config['max_tokens'],
+        #                                                 stream=True)
+        stream = self.client._call_lm(model=self.config['model'],
+                                                        messages=messages,)
+                                                        # temperature=self.config['temperature'],
+                                                        # max_tokens=self.config['max_tokens'],
+ 
+        output = stream
         start = time.time()
-        for chunk in stream:
-            print(f'[{time.time()-start:.2f}s] Querying OpenAI API...', end='\r')
-            if len(chunk.choices) != 0 and chunk.choices[0].delta.content is not None:
-                output += chunk.choices[0].delta.content
-        print(f'[{time.time()-start:.2f}s] Querying OpenAI API...Done')
+        # for chunk in stream:
+        #     print(f'[{time.time()-start:.2f}s] Querying OpenAI API...', end='\r')
+        #     if len(chunk.choices) != 0 and chunk.choices[0].delta.content is not None:
+        #         output += chunk.choices[0].delta.content
+        # print(f'[{time.time()-start:.2f}s] Querying OpenAI API...Done')
         # save raw output
         with open(os.path.join(self.task_dir, 'output_raw.txt'), 'w') as f:
             f.write(output)

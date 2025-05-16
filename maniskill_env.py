@@ -655,7 +655,7 @@ class ManiSkill_Env:
                     for mesh in collision_meshs:
                         collision_points.append(self.convert_mesh(entity, mesh))
 
-        collision_points = np.concatenate(collision_points, axis=1)
+        collision_points = np.concatenate(collision_points, axis=0)
         # breakpoint()
         draw_pc(collision_points)
         # visualize_points_open3d(collision_points)
